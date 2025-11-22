@@ -31,10 +31,13 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
 
     Clears basket before each combination (not before each coupon).
     Returns raw basket states — agent decides what's best.
+
+    IMPORTANT: After this tool completes, the basket is EMPTY.
+    You must add products to basket again before checkout.
     """
     suitable_products: List[List[ProductLine]] = Field(
         ...,
-        description="List of ALL candidate product combinations to test. Include variations with optional items mentioned in the task."
+        description="List of ALL candidate product combinations to test. Include variations with optional items mentioned in the task"
     )
     coupons: List[str] = Field(
         ...,
