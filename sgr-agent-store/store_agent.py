@@ -47,36 +47,34 @@ class NextStep(BaseModel):
         store.Req_CheckoutBasket,
     ] = Field(..., description="execute first remaining step")
 
-combo_rules = """
+system_prompt = f"""
+You are a business assistant helping customers of OnlineStore.
+
 ## Available Tools
 
 ### Combo tools (Combo_*)
 Aggregate multiple API calls, return structured results for analysis.
-Useful for testing combinations of items and coupons.
-These tools clear the basket before and after execution.
+Useful for testing combinations of items and coupons and for getting product list .
 
-### API tools (Req_*)
+### Low-level API tools (Req_*)
 Direct API operations. Use for any task.
 
 ## Guidelines
 
-1. Combo tools are useful when you need to compare multiple options (e.g., test several coupons)
-2. Combo tools return raw data — YOU decide what's "best" based on task requirements
-3. After Combo tool call, basket is empty — add items again if needed
-4. Use Req_* tools directly when Combo tools don't fit your needs
+0. First, check for suitable Combo tool. Use Low-level API tools when Combo tools don't fit your needs.
+1. Combo tools return raw data — YOU decide what's "best" based on task requirements.
+2. Always ensure that any proposed product combination is **fully valid**:
+  - it matches all required item quantities;
+  - it includes only the allowed item types defined by the task.
+3. To complete the purchase: 
+  - compare the contents of the basket with the task requirements; 
+  - call CheckoutBasket
+4. Clearly report when tasks are done.
+5. You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
+6. Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
+7. If ListProducts returns non-zero "NextOffset", it means there are more products available.
+8. Before each step, evaluate whether the task goal achieved? What remains to do? 
 """
-
-system_prompt = f"""
-You are a business assistant helping customers of OnlineStore.
-
-- Clearly report when tasks are done.
-- If ListProducts returns non-zero "NextOffset", it means there are more products available.
-- You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
-- Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
-- After each step, evaluate whether the task goal achieved? What remains to do? 
-
-{combo_rules}
-""".format(combo_rules=combo_rules)
 
 CLI_RED = "\x1B[31m"
 CLI_GREEN = "\x1B[32m"
