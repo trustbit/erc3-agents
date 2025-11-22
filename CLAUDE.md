@@ -1,150 +1,169 @@
-# Принципы проектирования высокоуровневых инструментов для агентов
+# Combo Tools Design Principles for Agents
 
-## 1. Разделение ответственности
+## 1. Separation of Responsibilities
 
-| Компонент | Ответственность |
-|-----------|-----------------|
-| **Инструмент (обёртка)** | Выполнить цепочку API-вызовов, собрать данные, обработать ошибки, вернуть структурированный результат |
-| **Агент (LLM)** | Анализировать данные, учитывать контекст задачи, принимать решения |
+| Component | Responsibility |
+|-----------|----------------|
+| **Combo tool (wrapper)** | Execute a chain of API calls, collect data, handle errors, return structured result |
+| **Agent (LLM)** | Analyze data, consider task context, make decisions |
 
-**Инструмент НЕ принимает решений** — только возвращает факты. Агент решает, что "лучше" исходя из условий задачи.
+**Combo tool does NOT make decisions** — it only returns facts. The agent decides what's "best" based on task requirements.
 
 ---
 
-## 2. Именование инструментов
+## 2. Tool Naming
 
-Имя должно объяснять агенту **что на входе → что делает → что на выходе**:
+### Prefix Convention:
+
+| Type | Prefix | Description |
+|------|--------|-------------|
+| API tools | `Req_*` | Direct API operations (from erc3 package or other APIs) |
+| Combo tools | `Combo_*` | Our wrappers that aggregate multiple calls |
+
+### Combo Tool Name Structure:
 
 ```
-Req_Test_Options_For_Parameters
-     │         │           │
-     │         │           └── что на входе
-     │         └── что делает
-     └── префикс запроса
+Combo_Action_Target_For_Parameters
+       │       │           │
+       │       │           └── input parameters
+       │       └── what is being acted upon
+       └── action (Test, Find, Compare, Calculate)
 ```
 
-**Примеры:**
-- `Req_Test_TimeSlots_For_Participants` — проверить слоты для участников
-- `Req_Find_Available_Rooms_For_TimeRange` — найти свободные комнаты
-- `Req_Compare_Prices_For_Configurations` — сравнить цены конфигураций
-
-**Конвенция уровней:**
-- Высокоуровневые: `Req_Test_*`, `Req_Find_*`, `Req_Compare_*`, `Req_Calculate_*` — агрегируют вызовы
-- Низкоуровневые: `Req_Create*`, `Req_Update*`, `Req_Delete*`, `Req_Get*` — прямые операции
+**Examples:**
+- `Combo_Test_Coupons_For_Item_Sets` — test coupons for item sets
+- `Combo_Find_Extra_Items_To_Maximize_Discount` — find extra items for max discount
+- `Combo_Test_Slots_For_Participants` — test time slots for participants
+- `Combo_Find_Room_For_Meeting_Options` — find room for meeting options
 
 ---
 
-## 3. Управление состоянием
+## 3. State Management
 
-- **Не пытаемся сохранить/восстановить исходное состояние** — сложно и ненадёжно
-- **Приводим состояние к известному перед началом работы** — гарантируем чистый старт
-- **Оставляем состояние чистым/нейтральным на выходе** — через `finally`
-- **Агент адаптируется к изменениям среды** — это его задача, не инструмента
+- **Don't try to save/restore original state** — complex and unreliable
+- **Reset state to known state before starting** — guarantee clean start
+- **Leave state clean/neutral on exit** — via `finally`
+- **Agent adapts to environment changes** — that's its job, not the Combo tool's
 
 ---
 
-## 4. Оптимизация вызовов
+## 4. Call Optimization
 
-Структура циклов минимизирует дорогие операции:
+Loop structure minimizes expensive operations:
 
 ```python
-for primary_param in primary_params:       # ВНЕШНИЙ — дорогая операция (сброс/инициализация)
+for primary_param in primary_params:       # OUTER — expensive operation (reset/init)
     reset_state()
-    setup(primary_param)                   # 1 раз на primary_param
+    setup(primary_param)                   # once per primary_param
 
-    for secondary_param in secondary_params:  # ВНУТРЕННИЙ — дешёвая операция
-        apply(secondary_param)             # быстро, без пересоздания
+    for secondary_param in secondary_params:  # INNER — cheap operation
+        apply(secondary_param)             # fast, no rebuild
         read_result()
         revert(secondary_param)
 ```
 
-**Принцип:** дорогие операции — во внешнем цикле, дешёвые — во внутреннем.
+**Principle:** expensive operations in outer loop, cheap ones in inner loop.
 
 ---
 
-## 5. Обработка ошибок
+## 5. Error Handling
 
-**Два типа ошибок:**
+**Two types of errors:**
 
-| Тип | Где возникает | Действие |
-|-----|---------------|----------|
-| **Фатальная** | Вне циклов (инициализация, сброс) | Завершить, вернуть `fatal_error` |
-| **Локальная** | Внутри цикла (применение параметра) | Записать в `results`, продолжить |
+| Type | Where it occurs | Action |
+|------|-----------------|--------|
+| **Fatal** | Outside loops (init, reset) | Terminate, return `fatal_error` |
+| **Local** | Inside loop (applying parameter) | Record in `results`, continue |
 
-**Структура ошибки:**
+**Error structure (uses ApiError from erc3):**
 ```python
+from erc3 import ApiError
+
 class ErrorInfo(BaseModel):
-    method: str          # какой метод упал
-    error_text: str      # текст ошибки
-    params: dict         # параметры, вызвавшие ошибку
+    method: str                    # which method failed
+    api_error: ApiError            # structured error from ERC3 (status, error, code)
+    params: Optional[dict] = None  # parameters that caused the error
 ```
 
-Агент видит ошибки в контексте параметров и принимает решение (ресурс недоступен vs параметр невалиден — разные действия).
+Agent sees errors in context of parameters and can make decisions (resource unavailable vs invalid parameter — different actions).
 
 ---
 
-## 6. Формат ответа
+## 6. Response Format
 
 ```python
-class Resp_Test_Options_For_Parameters(BaseModel):
-    success: bool                              # общий статус выполнения
-    results: Optional[List[TestResult]]        # массив результатов
-    fatal_error: Optional[ErrorInfo]           # если фатальная ошибка
+from erc3 import ApiError
+
+class ErrorInfo(BaseModel):
+    method: str
+    api_error: ApiError
+    params: Optional[dict] = None
 
 class TestResult(BaseModel):
-    primary_param: Any                         # значение внешнего параметра
-    secondary_param: Any                       # значение внутреннего параметра
-    success: bool                              # успех/неуспех этой комбинации
-    data: Optional[ResponseModel]              # данные ответа (если success)
-    error: Optional[ErrorInfo]                 # данные ошибки (если не success)
+    primary_param: Any                         # outer parameter value
+    secondary_param: Any                       # inner parameter value
+    success: bool                              # success/failure of this combination
+    data: Optional[ResponseModel] = None       # response data (if success)
+    error: Optional[ErrorInfo] = None          # error data (if not success)
+
+class Resp_Combo(BaseModel):
+    success: bool                              # overall execution status
+    results: Optional[List[TestResult]] = None # array of results
+    fatal_error: Optional[ErrorInfo] = None    # if fatal error occurred
 ```
 
 ---
 
-## 7. Промптинг агента
+## 7. Agent Prompting
 
 ```
 ## Available Tools
 
-### High-level tools (Req_Test_*, Req_Find_*, Req_Compare_*)
+### Combo tools (Combo_*)
 Aggregate multiple API calls, return structured results for analysis.
 Use for exploring options, testing combinations, comparing alternatives.
 These tools reset state before and after execution.
 
-### Low-level tools (Req_Create*, Req_Update*, Req_Delete*, Req_Get*)
+### API tools (Req_*)
 Direct API operations that modify or read state.
 Use for final actions after you've decided what to do.
 
 ## Guidelines
 
-1. PREFER high-level tools for exploration and comparison
-2. Use low-level tools ONLY for final actions
-3. High-level tools return raw data — YOU decide what's "best" based on task
+1. PREFER Combo tools for exploration and comparison
+2. Use Req_* tools ONLY for final actions
+3. Combo tools return raw data — YOU decide what's "best" based on task
 4. Errors in results are informational (resource busy, param invalid) — analyze and adapt
-5. After high-level tool call, state is clean — ready for next action
+5. After Combo tool call, state is clean — ready for next action
 ```
 
 ---
 
-## 8. Шаблон реализации инструмента
+## 8. Combo Tool Implementation Template
 
 ```python
-def high_level_tool(api, primary_params, secondary_params) -> Response:
+from erc3 import ApiError, ApiException
+
+def combo_tool(api, primary_params, secondary_params) -> Resp_Combo:
     results = []
 
     try:
         for primary in primary_params:
-            # Сброс/инициализация (дорогая операция)
+            # Reset/init (expensive operation)
             try:
                 reset_state(api)
                 setup(api, primary)
             except ApiException as e:
-                return Response(
+                return Resp_Combo(
                     success=False,
-                    fatal_error=ErrorInfo(method="setup", error_text=str(e), params=None)
+                    fatal_error=ErrorInfo(
+                        method="setup",
+                        api_error=e.api_error,
+                        params=None
+                    )
                 )
 
-            # Перебор вторичных параметров (дешёвые операции)
+            # Iterate secondary params (cheap operations)
             for secondary in secondary_params:
                 try:
                     apply(api, secondary)
@@ -164,7 +183,7 @@ def high_level_tool(api, primary_params, secondary_params) -> Response:
                         success=False,
                         error=ErrorInfo(
                             method="apply",
-                            error_text=str(e),
+                            api_error=e.api_error,
                             params={"primary": primary, "secondary": secondary}
                         )
                     ))
@@ -179,17 +198,17 @@ def high_level_tool(api, primary_params, secondary_params) -> Response:
         except:
             pass
 
-    return Response(success=True, results=results)
+    return Resp_Combo(success=True, results=results)
 ```
 
 ---
 
-## 9. Чек-лист при создании нового инструмента
+## 9. Checklist for Creating a New Combo Tool
 
-- [ ] Имя описывает вход, действие и выход
-- [ ] Инструмент не принимает решений — только собирает данные
-- [ ] Дорогие операции во внешнем цикле, дешёвые во внутреннем
-- [ ] Состояние сбрасывается перед началом и в `finally`
-- [ ] Фатальные ошибки завершают выполнение
-- [ ] Локальные ошибки записываются в результаты с параметрами
-- [ ] Ответ содержит достаточно информации для принятия решения агентом
+- [ ] Name starts with `Combo_` and describes action, target, and parameters
+- [ ] Tool does not make decisions — only collects data
+- [ ] Expensive operations in outer loop, cheap ones in inner loop
+- [ ] State is reset before start and in `finally`
+- [ ] Fatal errors terminate execution
+- [ ] Local errors are recorded in results with parameters
+- [ ] Response contains enough information for agent to make decisions

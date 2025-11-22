@@ -1,9 +1,20 @@
 import time
 from typing import Annotated, List, Union, Literal
+
+TASK_TIMEOUT_SEC = 120  # 2 minutes per task
 from annotated_types import MaxLen, MinLen
 from pydantic import BaseModel, Field
 from erc3 import store, ApiException, TaskInfo, ERC3
 from openai import OpenAI
+
+from tools import (
+    Combo_Find_Best_Coupon_For_Products,
+    combo_find_best_coupon_for_products,
+    Combo_Get_Page_Limit,
+    combo_get_page_limit,
+    Combo_Get_All_Products,
+    combo_get_all_products,
+)
 
 client = OpenAI()
 
@@ -22,6 +33,11 @@ class NextStep(BaseModel):
     # if task is completed, model will pick ReportTaskCompletion
     function: Union[
         ReportTaskCompletion,
+        # Combo tools (aggregate multiple API calls)
+        Combo_Find_Best_Coupon_For_Products,
+        Combo_Get_Page_Limit,
+        Combo_Get_All_Products,
+        # API tools (direct operations)
         store.Req_ListProducts,
         store.Req_ViewBasket,
         store.Req_ApplyCoupon,
@@ -31,22 +47,52 @@ class NextStep(BaseModel):
         store.Req_CheckoutBasket,
     ] = Field(..., description="execute first remaining step")
 
-system_prompt = """
+combo_rules = """
+## Available Tools
+
+### Combo tools (Combo_*)
+Aggregate multiple API calls, return structured results for analysis.
+Useful for testing combinations of items and coupons.
+These tools clear the basket before and after execution.
+
+### API tools (Req_*)
+Direct API operations. Use for any task.
+
+## Guidelines
+
+1. Combo tools are useful when you need to compare multiple options (e.g., test several coupons)
+2. Combo tools return raw data — YOU decide what's "best" based on task requirements
+3. After Combo tool call, basket is empty — add items again if needed
+4. Use Req_* tools directly when Combo tools don't fit your needs
+"""
+
+system_prompt = f"""
 You are a business assistant helping customers of OnlineStore.
 
 - Clearly report when tasks are done.
 - If ListProducts returns non-zero "NextOffset", it means there are more products available.
 - You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
 - Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
-"""
+- After each step, evaluate whether the task goal achieved? What remains to do? 
+
+{combo_rules}
+""".format(combo_rules=combo_rules)
 
 CLI_RED = "\x1B[31m"
 CLI_GREEN = "\x1B[32m"
 CLI_CLR = "\x1B[0m"
 
-def run_agent(model: str, api: ERC3, task: TaskInfo):
+def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
 
     store_api = api.get_store_client(task)
+
+    # Write task header to log file
+    if log_file:
+        with open(log_file, "a") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"TASK: {task.task_id} ({task.spec_id})\n")
+            f.write(f"TEXT: {task.task_text}\n")
+            f.write(f"{'='*60}\n\n")
 
     # log will contain conversation context for the agent within task
     log = [
@@ -54,8 +100,17 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
         {"role": "user", "content": task.task_text},
     ]
 
-    # let's limit number of reasoning steps by 20, just to be safe
-    for i in range(20):
+    task_started = time.time()
+
+    # let's limit number of reasoning steps by 50, just to be safe
+    for i in range(50):
+        # Check timeout
+        if time.time() - task_started > TASK_TIMEOUT_SEC:
+            print(f"TIMEOUT: task exceeded {TASK_TIMEOUT_SEC}s limit")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"TIMEOUT: exceeded {TASK_TIMEOUT_SEC}s limit\n\n")
+            break
         step = f"step_{i + 1}"
         print(f"Next {step}... ", end="")
 
@@ -77,11 +132,25 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
 
         job = completion.choices[0].message.parsed
 
+        # Log agent's reasoning to file
+        if log_file and job:
+            with open(log_file, "a") as f:
+                f.write(f"--- {step} ---\n")
+                f.write(f"current_state: {job.current_state}\n")
+                f.write(f"plan: {job.plan_remaining_steps_brief}\n")
+                f.write(f"task_completed: {job.task_completed}\n")
+                f.write(f"function: {job.function.__class__.__name__}\n")
+                f.write(f"  args: {job.function.model_dump_json()}\n")
+
         # if SGR wants to finish, then quit loop
         if isinstance(job.function, ReportTaskCompletion):
             print(f"[blue]agent {job.function.code}[/blue]. Summary:")
             for s in job.function.completed_steps_laconic:
                 print(f"- {s}")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"COMPLETED: {job.function.code}\n")
+                    f.write(f"Summary: {job.function.completed_steps_laconic}\n\n")
             break
 
         # print next sep for debugging
@@ -103,13 +172,28 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
 
         # now execute the tool by dispatching command to our handler
         try:
-            result = store_api.dispatch(job.function)
+            # Handle Combo tools separately
+            if isinstance(job.function, Combo_Find_Best_Coupon_For_Products):
+                result = combo_find_best_coupon_for_products(store_api, job.function)
+            elif isinstance(job.function, Combo_Get_Page_Limit):
+                result = combo_get_page_limit(store_api, job.function)
+            elif isinstance(job.function, Combo_Get_All_Products):
+                result = combo_get_all_products(store_api, job.function)
+            else:
+                # Regular API tools
+                result = store_api.dispatch(job.function)
             txt = result.model_dump_json(exclude_none=True, exclude_unset=True)
             print(f"{CLI_GREEN}OUT{CLI_CLR}: {txt}")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"  result: {txt}\n\n")
         except ApiException as e:
             txt = e.detail
             # print to console as ascii red
             print(f"{CLI_RED}ERR: {e.api_error.error}{CLI_CLR}")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"  ERROR: {e.api_error.error}\n\n")
 
         # and now we add results back to the convesation history, so that agent
         # we'll be able to act on the results in the next reasoning step.
