@@ -19,15 +19,14 @@ from erc3.store import (
 from .dtos import (
     ErrorInfo,
     ItemSetCouponResult,
-    BundleDealResult,
     Combo_Find_Best_Coupon_For_Products,
     Resp_Combo_Find_Best_Coupon_For_Products,
-    Combo_Find_Extra_Items_To_Maximize_Discount,
-    Resp_Combo_Find_Extra_Items_To_Maximize_Discount,
     Combo_Get_Page_Limit,
     Resp_Combo_Get_Page_Limit,
     Combo_Get_All_Products,
     Resp_Combo_Get_All_Products,
+    TaskCompletionCheckList,
+    Resp_TaskCompletionCheckList,
 )
 
 
@@ -143,188 +142,6 @@ def combo_find_best_coupon_for_products(
     )
 
 
-def combo_find_extra_items_to_maximize_discount(
-    api: StoreClient,
-    req: Combo_Find_Extra_Items_To_Maximize_Discount
-) -> Resp_Combo_Find_Extra_Items_To_Maximize_Discount:
-    """
-    Find if adding extra products enables better coupon discounts.
-
-    First tests target items alone with each coupon (baseline),
-    then tries adding combinations of extra items.
-    Returns raw results — agent decides what's best.
-    Basket is guaranteed to be empty after execution.
-    """
-    baseline_results: List[ItemSetCouponResult] = []
-    bundle_results: List[BundleDealResult] = []
-
-    try:
-        # 1. Test baseline (target items only)
-        try:
-            clear_basket(api)
-        except ApiException as e:
-            return Resp_Combo_Find_Extra_Items_To_Maximize_Discount(
-                success=False,
-                fatal_error=ErrorInfo(
-                    method="clear_basket",
-                    api_error=e.api_error,
-                    params=None
-                )
-            )
-
-        # Add target items
-        target_added = True
-        for item in req.target_items:
-            try:
-                api.dispatch(Req_AddProductToBasket(sku=item.sku, quantity=item.quantity))
-            except ApiException as e:
-                target_added = False
-                # Record error for all coupons
-                for coupon in req.coupons:
-                    baseline_results.append(ItemSetCouponResult(
-                        items=req.target_items,
-                        coupon=coupon,
-                        success=False,
-                        error=ErrorInfo(
-                            method="Req_AddProductToBasket",
-                            api_error=e.api_error,
-                            params={"failed_item": {"sku": item.sku, "quantity": item.quantity}}
-                        )
-                    ))
-                break
-
-        # Test each coupon on baseline
-        if target_added:
-            baseline_basket_no_coupon = api.dispatch(Req_ViewBasket())
-            baseline_subtotal = baseline_basket_no_coupon.subtotal
-
-            for coupon in req.coupons:
-                try:
-                    api.dispatch(Req_ApplyCoupon(coupon=coupon))
-                    basket = api.dispatch(Req_ViewBasket())
-                    api.dispatch(Req_RemoveCoupon())
-
-                    baseline_results.append(ItemSetCouponResult(
-                        items=req.target_items,
-                        coupon=coupon,
-                        success=True,
-                        basket=basket
-                    ))
-                except ApiException as e:
-                    baseline_results.append(ItemSetCouponResult(
-                        items=req.target_items,
-                        coupon=coupon,
-                        success=False,
-                        error=ErrorInfo(
-                            method="Req_ApplyCoupon",
-                            api_error=e.api_error,
-                            params={"coupon": coupon}
-                        )
-                    ))
-                    try:
-                        api.dispatch(Req_RemoveCoupon())
-                    except:
-                        pass
-
-        # 2. Test with extra items (limited combinations)
-        combinations_tested = 0
-        for extra_item in req.candidate_extras:
-            if combinations_tested >= req.max_extra_combinations:
-                break
-
-            # Clear and rebuild basket with target + extra
-            try:
-                clear_basket(api)
-            except ApiException:
-                continue
-
-            # Add target items
-            items_ok = True
-            for item in req.target_items:
-                try:
-                    api.dispatch(Req_AddProductToBasket(sku=item.sku, quantity=item.quantity))
-                except ApiException:
-                    items_ok = False
-                    break
-
-            if not items_ok:
-                continue
-
-            # Add extra item
-            try:
-                api.dispatch(Req_AddProductToBasket(sku=extra_item.sku, quantity=extra_item.quantity))
-            except ApiException as e:
-                # Record error for all coupons with this extra
-                for coupon in req.coupons:
-                    bundle_results.append(BundleDealResult(
-                        target_items=req.target_items,
-                        extra_items=[extra_item],
-                        coupon=coupon,
-                        success=False,
-                        error=ErrorInfo(
-                            method="Req_AddProductToBasket",
-                            api_error=e.api_error,
-                            params={"extra_item": {"sku": extra_item.sku, "quantity": extra_item.quantity}}
-                        )
-                    ))
-                continue
-
-            # Get basket state to calculate extra item cost
-            basket_with_extra = api.dispatch(Req_ViewBasket())
-            extra_items_cost = basket_with_extra.subtotal - baseline_subtotal if target_added else 0
-
-            # Test each coupon with this extra item
-            for coupon in req.coupons:
-                combinations_tested += 1
-                try:
-                    api.dispatch(Req_ApplyCoupon(coupon=coupon))
-                    basket = api.dispatch(Req_ViewBasket())
-                    api.dispatch(Req_RemoveCoupon())
-
-                    # Calculate net savings: discount minus extra item cost
-                    discount = basket.discount or 0
-                    net_savings = discount - extra_items_cost
-
-                    bundle_results.append(BundleDealResult(
-                        target_items=req.target_items,
-                        extra_items=[extra_item],
-                        coupon=coupon,
-                        success=True,
-                        basket=basket,
-                        extra_items_cost=extra_items_cost,
-                        net_savings=net_savings
-                    ))
-                except ApiException as e:
-                    bundle_results.append(BundleDealResult(
-                        target_items=req.target_items,
-                        extra_items=[extra_item],
-                        coupon=coupon,
-                        success=False,
-                        error=ErrorInfo(
-                            method="Req_ApplyCoupon",
-                            api_error=e.api_error,
-                            params={"coupon": coupon, "extra_item": {"sku": extra_item.sku, "quantity": extra_item.quantity}}
-                        )
-                    ))
-                    try:
-                        api.dispatch(Req_RemoveCoupon())
-                    except:
-                        pass
-
-    finally:
-        # ALWAYS clear basket on exit
-        try:
-            clear_basket(api)
-        except:
-            pass
-
-    return Resp_Combo_Find_Extra_Items_To_Maximize_Discount(
-        success=True,
-        baseline_results=baseline_results,
-        bundle_results=bundle_results
-    )
-
-
 def combo_get_page_limit(
     api: StoreClient,
     req: Combo_Get_Page_Limit
@@ -385,4 +202,45 @@ def combo_get_all_products(
     return Resp_Combo_Get_All_Products(
         success=True,
         products=products
+    )
+
+
+def validate_task_completion_checklist(
+    req: TaskCompletionCheckList
+) -> Resp_TaskCompletionCheckList:
+    """
+    Validate that agent has properly attempted the task before completing.
+
+    Logic:
+    - If task has no solution AND agent attempted it -> allowed to complete (as "failed")
+    - If task has solution AND checkout was done -> allowed to complete (as "completed")
+    - If task has solution BUT no checkout -> NOT allowed, must do checkout first
+    - If agent didn't attempt at all -> NOT allowed, must try first
+    """
+
+    # Case 1: Agent didn't even try
+    if not req.did_you_attempt_to_solve_the_task:
+        return Resp_TaskCompletionCheckList(
+            allowed_to_complete=False,
+            message="You must attempt to solve the task first. Search for products, check availability, test coupons if needed."
+        )
+
+    # Case 2: Task has no solution (impossible to complete)
+    if not req.does_this_task_have_solution:
+        return Resp_TaskCompletionCheckList(
+            allowed_to_complete=True,
+            message="Task cannot be completed (no solution). You may report as 'failed' with explanation."
+        )
+
+    # Case 3: Task has solution but checkout not done
+    if not req.was_checkout_done:
+        return Resp_TaskCompletionCheckList(
+            allowed_to_complete=False,
+            message="Task has a solution but you haven't completed the purchase. Add items to basket, apply coupon if needed, and call CheckoutBasket."
+        )
+
+    # Case 4: All good - task has solution and checkout was done
+    return Resp_TaskCompletionCheckList(
+        allowed_to_complete=True,
+        message="Checkout completed. You may report the task as 'completed'."
     )

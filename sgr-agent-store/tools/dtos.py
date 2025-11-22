@@ -52,40 +52,6 @@ class Resp_Combo_Find_Best_Coupon_For_Products(BaseModel):
     fatal_error: Optional[ErrorInfo] = None          # if fatal error occurred
 
 
-class BundleDealResult(BaseModel):
-    """Result for one bundle deal option (target items + extra items + coupon)"""
-    target_items: List[ProductLine]          # original items agent wants to buy
-    extra_items: List[ProductLine]           # additional items added to enable coupon
-    coupon: str                              # coupon tested
-    success: bool                            # whether this combination succeeded
-    basket: Optional[Resp_ViewBasket] = None # basket state (if success)
-    extra_items_cost: Optional[int] = None   # cost of extra items
-    net_savings: Optional[int] = None        # discount - extra_items_cost (can be negative)
-    error: Optional[ErrorInfo] = None        # error info (if not success)
-
-
-class Combo_Find_Extra_Items_To_Maximize_Discount(BaseModel):
-    """
-    Find if adding extra products enables better coupon discounts.
-
-    Tests target items alone with each coupon, then tries adding
-    combinations of extra items to see if better discounts are achievable.
-    Returns raw results — agent decides what's best.
-    """
-    target_items: List[ProductLine]          # items agent wants to buy
-    coupons: List[str]                       # coupons to test
-    candidate_extras: List[ProductLine]      # potential extra items to try adding
-    max_extra_combinations: int = 10         # limit combinations to avoid explosion
-
-
-class Resp_Combo_Find_Extra_Items_To_Maximize_Discount(BaseModel):
-    """Response from Combo_Find_Extra_Items_To_Maximize_Discount"""
-    success: bool                                    # overall execution status
-    baseline_results: Optional[List[ItemSetCouponResult]] = None  # target items only
-    bundle_results: Optional[List[BundleDealResult]] = None       # with extra items
-    fatal_error: Optional[ErrorInfo] = None          # if fatal error occurred
-
-
 # --- Product search tools ---
 
 class Combo_Get_Page_Limit(BaseModel):
@@ -118,3 +84,32 @@ class Resp_Combo_Get_All_Products(BaseModel):
     success: bool
     products: Optional[List[ProductInfo]] = None
     error: Optional[str] = None
+
+
+# --- Task completion self-control ---
+
+class TaskCompletionCheckList(BaseModel):
+    """
+    Self-control checklist before completing a task.
+
+    REQUIRED: You MUST call this tool before ReportTaskCompletion.
+    This validates that you've properly attempted the task.
+    """
+    did_you_attempt_to_solve_the_task: bool = Field(
+        ...,
+        description="Did you try to solve the task? (searched products, tested coupons, etc.)"
+    )
+    does_this_task_have_solution: bool = Field(
+        ...,
+        description="Can this task be completed? (products available, budget sufficient, etc.)"
+    )
+    was_checkout_done: bool = Field(
+        ...,
+        description="Did you call CheckoutBasket to complete the purchase?"
+    )
+
+
+class Resp_TaskCompletionCheckList(BaseModel):
+    """Response from TaskCompletionCheckList validation"""
+    allowed_to_complete: bool
+    message: str

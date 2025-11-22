@@ -14,6 +14,8 @@ from tools import (
     combo_get_page_limit,
     Combo_Get_All_Products,
     combo_get_all_products,
+    TaskCompletionCheckList,
+    validate_task_completion_checklist,
 )
 
 client = OpenAI()
@@ -30,8 +32,8 @@ class NextStep(BaseModel):
     # now let's continue the cascade and check with LLM if the task is done
     task_completed: bool
     # Routing to one of the tools to execute the first remaining step
-    # if task is completed, model will pick ReportTaskCompletion
     function: Union[
+        TaskCompletionCheckList,
         ReportTaskCompletion,
         # Combo tools (aggregate multiple API calls)
         Combo_Find_Best_Coupon_For_Products,
@@ -66,14 +68,14 @@ Direct API operations. Use for any task.
 2. Always ensure that any proposed product combination is **fully valid**:
   - it matches all required item quantities;
   - it includes only the allowed item types defined by the task.
-3. To complete the purchase: 
-  - compare the contents of the basket with the task requirements; 
+3. To complete the purchase:
+  - compare the contents of the basket with the task requirements;
   - call CheckoutBasket
 4. Clearly report when tasks are done.
 5. You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
 6. Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
 7. If ListProducts returns non-zero "NextOffset", it means there are more products available.
-8. Before each step, evaluate whether the task goal achieved? What remains to do? 
+8. Before each step, evaluate whether the task goal achieved? What remains to do?
 """
 
 CLI_RED = "\x1B[31m"
@@ -165,8 +167,37 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
                 f.write(f"function: {job.function.__class__.__name__}\n")
                 f.write(f"  args: {job.function.model_dump_json()}\n")
 
-        # if SGR wants to finish, then quit loop
+        # if SGR wants to finish, check if checklist was called in previous step
         if isinstance(job.function, ReportTaskCompletion):
+            # Check if previous step was TaskCompletionCheckList
+            prev_assistant = log[-2] if len(log) >= 2 else None
+            was_checklist = (
+                prev_assistant and
+                prev_assistant.get("tool_calls") and
+                prev_assistant["tool_calls"][0]["function"]["name"] == "TaskCompletionCheckList"
+            )
+            if not was_checklist:
+                # Reject completion - must call TaskCompletionCheckList first
+                txt = '{"error": "You must call TaskCompletionCheckList before ReportTaskCompletion"}'
+                print(f"{CLI_RED}BLOCKED{CLI_CLR}: Must call TaskCompletionCheckList first")
+                if log_file:
+                    with open(log_file, "a") as f:
+                        f.write(f"  BLOCKED: Must call TaskCompletionCheckList first\n\n")
+                # Add assistant message with tool_call first (like other tools)
+                log.append({
+                    "role": "assistant",
+                    "content": job.plan_remaining_steps_brief[0],
+                    "tool_calls": [{
+                        "type": "function",
+                        "id": step,
+                        "function": {
+                            "name": job.function.__class__.__name__,
+                            "arguments": job.function.model_dump_json(),
+                        }}]
+                })
+                log.append({"role": "tool", "content": txt, "tool_call_id": step})
+                continue
+
             print(f"[blue]agent {job.function.code}[/blue]. Summary:")
             for s in job.function.completed_steps_laconic:
                 print(f"- {s}")
@@ -198,8 +229,10 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
 
         # now execute the tool by dispatching command to our handler
         try:
-            # Handle Combo tools separately
-            if isinstance(job.function, Combo_Find_Best_Coupon_For_Products):
+            # Handle Combo tools and checklist separately
+            if isinstance(job.function, TaskCompletionCheckList):
+                result = validate_task_completion_checklist(job.function)
+            elif isinstance(job.function, Combo_Find_Best_Coupon_For_Products):
                 result = combo_find_best_coupon_for_products(store_api, job.function)
             elif isinstance(job.function, Combo_Get_Page_Limit):
                 result = combo_get_page_limit(store_api, job.function)
