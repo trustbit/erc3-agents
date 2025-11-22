@@ -14,7 +14,7 @@ class AgentConfig(BaseModel):
     architecture: str = "Schema-Guided Reasoning with combo tools"
 
     # Model settings
-    model_id: str = "gpt-4o"
+    model_id: str = "gpt-4.1-mini"
     max_completion_tokens: int = 5000
     task_timeout_sec: int = 120
 

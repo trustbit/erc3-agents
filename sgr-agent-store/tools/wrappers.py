@@ -159,6 +159,11 @@ def combo_find_best_coupon_for_products(
         except:
             pass
 
+    # 5. Enrich results: add discount field to each basket
+    for basket in results:
+        if not hasattr(basket, 'discount') or basket.discount is None:
+            basket.discount = basket.subtotal - basket.total
+
     return Resp_Combo_Find_Best_Coupon_For_Products(
         success=True,
         results=results
