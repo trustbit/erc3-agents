@@ -1,12 +1,12 @@
 import time
-from typing import Annotated, List, Union, Literal
+from typing import Annotated, List, Union, Literal, Optional
 
-TASK_TIMEOUT_SEC = 120  # 2 minutes per task
 from annotated_types import MaxLen, MinLen
 from pydantic import BaseModel, Field
 from erc3 import store, ApiException, TaskInfo, ERC3
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
+from config import AgentConfig, default_config
 from tools import (
     Combo_Find_Best_Coupon_For_Products,
     combo_find_best_coupon_for_products,
@@ -58,45 +58,40 @@ class NextStep(BaseModel):
         ReportTaskCompletion,
     ] = Field(..., description="execute first remaining step")
 
-system_prompt = f"""
-You are a business assistant helping customers of OnlineStore.
-
-## Available Tools
-
-### Combo tools (Combo_*)
-Aggregate multiple API calls, return structured results for analysis.
-Useful for testing combinations of items and coupons and for getting product list .
-
-### Low-level API tools (Req_*)
-Direct API operations. Use for any task.
-
-## Guidelines
-
-0. First, check for suitable Combo tool. Use Low-level API tools when Combo tools don't fit your needs.
-1. Combo tools return raw data — YOU decide what's "best" based on task requirements.
-2. Always ensure that any proposed product combination is **fully valid**:
-  - it matches all required item quantities;
-  - it includes only the allowed item types defined by the task.
-3. To complete the purchase:
-  - compare the contents of the basket with the task requirements;
-  - call CheckoutBasket
-4. Clearly report when tasks are done.
-5. You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.
-6. Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.
-7. If ListProducts returns non-zero "NextOffset", it means there are more products available.
-8. Before each step, evaluate whether the task goal achieved? What remains to do?
-"""
 
 CLI_RED = "\x1B[31m"
 CLI_GREEN = "\x1B[32m"
+CLI_YELLOW = "\x1B[33m"
 CLI_CLR = "\x1B[0m"
+
+# Rate limit retry settings
+MAX_RETRIES = 5
+RATE_LIMIT_WAIT = 60  # seconds (TPM limit needs ~1 min to reset)
 
 # Session-level token tracking (persists across tasks)
 session_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
-def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
+
+def run_agent(
+    api: ERC3,
+    task: TaskInfo,
+    config: Optional[AgentConfig] = None,
+    log_file: str = None
+):
+    """
+    Run the agent on a single task.
+
+    Args:
+        api: ERC3 client instance
+        task: Task to solve
+        config: Agent configuration (uses default_config if not provided)
+        log_file: Optional path to log file
+    """
+    if config is None:
+        config = default_config
 
     store_api = api.get_store_client(task)
+    system_prompt = config.get_system_prompt()
 
     # Write task header to log file
     if log_file:
@@ -120,29 +115,49 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
     # let's limit number of reasoning steps by 50, just to be safe
     for i in range(50):
         # Check timeout
-        if time.time() - task_started > TASK_TIMEOUT_SEC:
-            print(f"TIMEOUT: task exceeded {TASK_TIMEOUT_SEC}s limit")
+        if time.time() - task_started > config.task_timeout_sec:
+            print(f"TIMEOUT: task exceeded {config.task_timeout_sec}s limit")
             if log_file:
                 with open(log_file, "a") as f:
-                    f.write(f"TIMEOUT: exceeded {TASK_TIMEOUT_SEC}s limit\n\n")
+                    f.write(f"TIMEOUT: exceeded {config.task_timeout_sec}s limit\n\n")
             break
         step = f"step_{i + 1}"
         print(f"Next {step}... ", end="")
 
         started = time.time()
 
-        completion = client.beta.chat.completions.parse(
-            model=model,
-            response_format=NextStep,
-            messages=log,
-            max_completion_tokens=2000,
-        )
+        # Retry loop for rate limit errors
+        completion = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                completion = client.beta.chat.completions.parse(
+                    model=config.model_id,
+                    response_format=NextStep,
+                    messages=log,
+                    max_completion_tokens=config.max_completion_tokens,
+                )
+                break  # Success, exit retry loop
+            except RateLimitError as e:
+                print(f"\n{CLI_YELLOW}RATE_LIMIT{CLI_CLR}: waiting {RATE_LIMIT_WAIT}s (attempt {attempt+1}/{MAX_RETRIES})")
+                if log_file:
+                    with open(log_file, "a") as f:
+                        f.write(f"--- {step} RATE_LIMIT (attempt {attempt+1}/{MAX_RETRIES}) ---\n\n")
+                time.sleep(RATE_LIMIT_WAIT)
+
+        # Check if all retries exhausted
+        if completion is None:
+            print(f"{CLI_RED}RATE_LIMIT_EXHAUSTED{CLI_CLR}: Max retries ({MAX_RETRIES}) exceeded")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"--- {step} RATE_LIMIT_EXHAUSTED ---\n")
+                    f.write(f"Max retries ({MAX_RETRIES}) exceeded, skipping task\n\n")
+            break  # Exit the step loop, move to next task
 
         step_duration = time.time() - started
 
         api.log_llm(
             task_id=task.task_id,
-            model="openai/"+model, # log in OpenRouter format
+            model="openai/"+config.model_id, # log in OpenRouter format
             duration_sec=step_duration,
             usage=completion.usage,
         )
