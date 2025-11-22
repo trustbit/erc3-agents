@@ -1,2 +1,6 @@
 venv
 .envrc
+.env
+.idea/
+__pycache__/
+*.pyc

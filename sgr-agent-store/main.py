@@ -1,4 +1,6 @@
 import textwrap
+from dotenv import load_dotenv
+load_dotenv()
 from openai import OpenAI
 from store_agent import run_agent
 from erc3 import ERC3
