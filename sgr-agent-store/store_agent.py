@@ -80,6 +80,9 @@ CLI_RED = "\x1B[31m"
 CLI_GREEN = "\x1B[32m"
 CLI_CLR = "\x1B[0m"
 
+# Session-level token tracking (persists across tasks)
+session_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
 def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
 
     store_api = api.get_store_client(task)
@@ -99,6 +102,9 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
     ]
 
     task_started = time.time()
+
+    # Task-level token tracking
+    task_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
     # let's limit number of reasoning steps by 50, just to be safe
     for i in range(50):
@@ -121,12 +127,29 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
             max_completion_tokens=10000,
         )
 
+        step_duration = time.time() - started
+
         api.log_llm(
             task_id=task.task_id,
             model="openai/"+model, # log in OpenRouter format
-            duration_sec=time.time() - started,
+            duration_sec=step_duration,
             usage=completion.usage,
         )
+
+        # Track tokens for step, task, and session
+        step_tokens = {
+            "prompt": completion.usage.prompt_tokens,
+            "completion": completion.usage.completion_tokens,
+            "total": completion.usage.total_tokens,
+        }
+        task_tokens["prompt"] += step_tokens["prompt"]
+        task_tokens["completion"] += step_tokens["completion"]
+        task_tokens["total"] += step_tokens["total"]
+        session_tokens["prompt"] += step_tokens["prompt"]
+        session_tokens["completion"] += step_tokens["completion"]
+        session_tokens["total"] += step_tokens["total"]
+
+        elapsed_sec = time.time() - task_started
 
         job = completion.choices[0].message.parsed
 
@@ -134,6 +157,8 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
         if log_file and job:
             with open(log_file, "a") as f:
                 f.write(f"--- {step} ---\n")
+                f.write(f"time: {elapsed_sec:.1f}s elapsed, step took {step_duration:.1f}s\n")
+                f.write(f"tokens: step={step_tokens['total']}, task={task_tokens['total']}, session={session_tokens['total']}\n")
                 f.write(f"current_state: {job.current_state}\n")
                 f.write(f"plan: {job.plan_remaining_steps_brief}\n")
                 f.write(f"task_completed: {job.task_completed}\n")
@@ -145,10 +170,13 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
             print(f"[blue]agent {job.function.code}[/blue]. Summary:")
             for s in job.function.completed_steps_laconic:
                 print(f"- {s}")
+            task_duration = time.time() - task_started
             if log_file:
                 with open(log_file, "a") as f:
                     f.write(f"COMPLETED: {job.function.code}\n")
-                    f.write(f"Summary: {job.function.completed_steps_laconic}\n\n")
+                    f.write(f"Summary: {job.function.completed_steps_laconic}\n")
+                    f.write(f"Task stats: {task_duration:.1f}s, {task_tokens['total']} tokens (prompt: {task_tokens['prompt']}, completion: {task_tokens['completion']})\n")
+                    f.write(f"Session stats: {session_tokens['total']} tokens total\n\n")
             break
 
         # print next sep for debugging
