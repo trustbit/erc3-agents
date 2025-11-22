@@ -51,8 +51,8 @@ class NextStep(BaseModel):
         store.Req_ViewBasket,
         store.Req_ApplyCoupon,
         store.Req_RemoveCoupon,
-        store.Req_AddProductToBasket,
-        store.Req_RemoveItemFromBasket,
+        # store.Req_AddProductToBasket,
+        # store.Req_RemoveItemFromBasket,
         # Task completion
         CheckList_Before_TaskCompletion,
         ReportTaskCompletion,
@@ -184,7 +184,7 @@ def run_agent(
             with open(log_file, "a") as f:
                 f.write(f"--- {step} ---\n")
                 f.write(f"time: {elapsed_sec:.1f}s elapsed, step took {step_duration:.1f}s\n")
-                f.write(f"tokens: step={step_tokens['total']}, task={task_tokens['total']}, session={session_tokens['total']}\n")
+                f.write(f"tokens: step={step_tokens['total']} (completion={step_tokens['completion']}), task={task_tokens['total']}, session={session_tokens['total']}\n")
                 f.write(f"current_state: {job.current_state}\n")
                 f.write(f"plan: {job.plan_remaining_steps_brief}\n")
                 f.write(f"task_completed: {job.task_completed}\n")
@@ -278,11 +278,16 @@ def run_agent(
                     f.write(f"  result: {txt}\n\n")
         except ApiException as e:
             txt = e.detail
-            # print to console as ascii red
             print(f"{CLI_RED}ERR: {e.api_error.error}{CLI_CLR}")
             if log_file:
                 with open(log_file, "a") as f:
                     f.write(f"  ERROR: {e.api_error.error}\n\n")
+        except Exception as e:
+            txt = f'{{"error": "{str(e)}"}}'
+            print(f"{CLI_RED}ERR: {str(e)}{CLI_CLR}")
+            if log_file:
+                with open(log_file, "a") as f:
+                    f.write(f"  ERROR: {str(e)}\n\n")
 
         # and now we add results back to the convesation history, so that agent
         # we'll be able to act on the results in the next reasoning step.
