@@ -22,16 +22,17 @@ load_dotenv()
 REPO_ROOT = Path(__file__).parent.parent
 from erc3 import ERC3, TaskInfo
 from store_agent import run_agent
+from config import AgentConfig, default_config
 
 # Get spec_id from command line or use default
 spec_id = sys.argv[1] if len(sys.argv) > 1 else "soda_pack_optimizer"
-benchmark = "store"
 
+# Use config
+config = default_config
 core = ERC3()
-MODEL_ID = "gpt-4o"
 
-print(f"Creating task: {benchmark}/{spec_id}")
-result = core.start_new_task(benchmark=benchmark, spec_id=spec_id)
+print(f"Creating task: {config.benchmark}/{spec_id}")
+result = core.start_new_task(benchmark=config.benchmark, spec_id=spec_id)
 
 print(f"Task ID: {result.task_id}")
 print(f"URL: https://erc.timetoact-group.at/tasks/{result.task_id}")
@@ -61,7 +62,7 @@ LOG_FILE = str(REPO_ROOT / f"task_{spec_id}.log")
 with open(LOG_FILE, "w") as f:
     f.write(f"Task: {result.task_id}\n")
     f.write(f"Spec: {spec_id}\n")
-    f.write(f"Model: {MODEL_ID}\n")
+    f.write(f"Model: {config.model_id}\n")
     f.write(f"URL: https://erc.timetoact-group.at/tasks/{result.task_id}\n")
     f.write("=" * 60 + "\n\n")
 
@@ -70,7 +71,7 @@ print("Starting agent...")
 print("=" * 60)
 
 try:
-    run_agent(MODEL_ID, core, task, LOG_FILE)
+    run_agent(core, task, config, LOG_FILE)
 except Exception as e:
     print(f"Error: {e}")
 
