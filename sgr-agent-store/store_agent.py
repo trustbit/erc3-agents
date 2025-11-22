@@ -10,12 +10,18 @@ from openai import OpenAI
 from tools import (
     Combo_Find_Best_Coupon_For_Products,
     combo_find_best_coupon_for_products,
-    Combo_Get_Page_Limit,
-    combo_get_page_limit,
-    Combo_Get_All_Products,
-    combo_get_all_products,
-    TaskCompletionCheckList,
-    validate_task_completion_checklist,
+    Combo_Get_Product_Page_Limit,
+    combo_get_product_page_limit,
+    Combo_List_All_Products,
+    combo_list_all_products,
+    Combo_EmptyBasket,
+    combo_empty_basket,
+    Combo_SetBasket,
+    combo_set_basket,
+    Combo_CheckoutBasket,
+    combo_checkout_basket,
+    CheckList_Before_TaskCompletion,
+    checklist_before_task_completion,
 )
 
 client = OpenAI()
@@ -33,20 +39,23 @@ class NextStep(BaseModel):
     task_completed: bool
     # Routing to one of the tools to execute the first remaining step
     function: Union[
-        TaskCompletionCheckList,
-        ReportTaskCompletion,
         # Combo tools (aggregate multiple API calls)
         Combo_Find_Best_Coupon_For_Products,
-        Combo_Get_Page_Limit,
-        Combo_Get_All_Products,
+        Combo_Get_Product_Page_Limit,
+        Combo_List_All_Products,
+        Combo_EmptyBasket,
+        Combo_SetBasket,
+        Combo_CheckoutBasket,
         # API tools (direct operations)
-        store.Req_ListProducts,
+        # store.Req_ListProducts,
         store.Req_ViewBasket,
         store.Req_ApplyCoupon,
         store.Req_RemoveCoupon,
         store.Req_AddProductToBasket,
         store.Req_RemoveItemFromBasket,
-        store.Req_CheckoutBasket,
+        # Task completion
+        CheckList_Before_TaskCompletion,
+        ReportTaskCompletion,
     ] = Field(..., description="execute first remaining step")
 
 system_prompt = f"""
@@ -126,7 +135,7 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
             model=model,
             response_format=NextStep,
             messages=log,
-            max_completion_tokens=10000,
+            max_completion_tokens=2000,
         )
 
         step_duration = time.time() - started
@@ -169,20 +178,20 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
 
         # if SGR wants to finish, check if checklist was called in previous step
         if isinstance(job.function, ReportTaskCompletion):
-            # Check if previous step was TaskCompletionCheckList
+            # Check if previous step was CheckList_Before_TaskCompletion
             prev_assistant = log[-2] if len(log) >= 2 else None
             was_checklist = (
                 prev_assistant and
                 prev_assistant.get("tool_calls") and
-                prev_assistant["tool_calls"][0]["function"]["name"] == "TaskCompletionCheckList"
+                prev_assistant["tool_calls"][0]["function"]["name"] == "CheckList_Before_TaskCompletion"
             )
             if not was_checklist:
-                # Reject completion - must call TaskCompletionCheckList first
-                txt = '{"error": "You must call TaskCompletionCheckList before ReportTaskCompletion"}'
-                print(f"{CLI_RED}BLOCKED{CLI_CLR}: Must call TaskCompletionCheckList first")
+                # Reject completion - must call CheckList_Before_TaskCompletion first
+                txt = '{"error": "You must call CheckList_Before_TaskCompletion before ReportTaskCompletion"}'
+                print(f"{CLI_RED}BLOCKED{CLI_CLR}: Must call CheckList_Before_TaskCompletion first")
                 if log_file:
                     with open(log_file, "a") as f:
-                        f.write(f"  BLOCKED: Must call TaskCompletionCheckList first\n\n")
+                        f.write(f"  BLOCKED: Must call CheckList_Before_TaskCompletion first\n\n")
                 # Add assistant message with tool_call first (like other tools)
                 log.append({
                     "role": "assistant",
@@ -230,14 +239,20 @@ def run_agent(model: str, api: ERC3, task: TaskInfo, log_file: str = None):
         # now execute the tool by dispatching command to our handler
         try:
             # Handle Combo tools and checklist separately
-            if isinstance(job.function, TaskCompletionCheckList):
-                result = validate_task_completion_checklist(job.function)
+            if isinstance(job.function, CheckList_Before_TaskCompletion):
+                result = checklist_before_task_completion(job.function)
             elif isinstance(job.function, Combo_Find_Best_Coupon_For_Products):
                 result = combo_find_best_coupon_for_products(store_api, job.function)
-            elif isinstance(job.function, Combo_Get_Page_Limit):
-                result = combo_get_page_limit(store_api, job.function)
-            elif isinstance(job.function, Combo_Get_All_Products):
-                result = combo_get_all_products(store_api, job.function)
+            elif isinstance(job.function, Combo_Get_Product_Page_Limit):
+                result = combo_get_product_page_limit(store_api, job.function)
+            elif isinstance(job.function, Combo_List_All_Products):
+                result = combo_list_all_products(store_api, job.function)
+            elif isinstance(job.function, Combo_EmptyBasket):
+                result = combo_empty_basket(store_api, job.function)
+            elif isinstance(job.function, Combo_SetBasket):
+                result = combo_set_basket(store_api, job.function)
+            elif isinstance(job.function, Combo_CheckoutBasket):
+                result = combo_checkout_basket(store_api, job.function)
             else:
                 # Regular API tools
                 result = store_api.dispatch(job.function)

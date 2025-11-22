@@ -1,6 +1,5 @@
 """Combo tool implementations - wrappers over erc3.store API"""
 
-import re
 from typing import List
 
 from erc3 import ApiException
@@ -13,32 +12,90 @@ from erc3.store import (
     Req_ApplyCoupon,
     Req_RemoveCoupon,
     Req_ViewBasket,
+    Resp_ViewBasket,
     Req_ListProducts,
+    Req_CheckoutBasket,
 )
 
 from .dtos import (
     ErrorInfo,
-    ItemSetCouponResult,
     Combo_Find_Best_Coupon_For_Products,
     Resp_Combo_Find_Best_Coupon_For_Products,
-    Combo_Get_Page_Limit,
-    Resp_Combo_Get_Page_Limit,
-    Combo_Get_All_Products,
-    Resp_Combo_Get_All_Products,
-    TaskCompletionCheckList,
-    Resp_TaskCompletionCheckList,
+    Combo_Get_Product_Page_Limit,
+    Resp_Combo_Get_Product_Page_Limit,
+    Combo_List_All_Products,
+    Resp_Combo_List_All_Products,
+    Combo_EmptyBasket,
+    Resp_Combo_EmptyBasket,
+    Combo_SetBasket,
+    Resp_Combo_SetBasket,
+    Combo_CheckoutBasket,
+    Resp_Combo_CheckoutBasket,
+    CheckList_Before_TaskCompletion,
+    Resp_CheckList_Before_TaskCompletion,
 )
 
 
-def clear_basket(api: StoreClient) -> None:
-    """Clear all items from the basket"""
+def clear_basket(api: StoreClient) -> tuple[int, bool]:
+    """Clear all items from the basket. Returns (items_removed, coupon_removed)."""
     basket = api.dispatch(Req_ViewBasket())
+    items_removed = 0
+    coupon_removed = False
     if basket.items:
         for item in basket.items:
             api.dispatch(Req_RemoveItemFromBasket(sku=item.sku, quantity=item.quantity))
+            items_removed += 1
     # Also remove any applied coupon
     if basket.coupon:
         api.dispatch(Req_RemoveCoupon())
+        coupon_removed = True
+    return items_removed, coupon_removed
+
+
+def combo_empty_basket(
+    api: StoreClient,
+    req: Combo_EmptyBasket
+) -> Resp_Combo_EmptyBasket:
+    """
+    Clear all items from the basket and remove any applied coupon.
+    """
+    try:
+        items_removed, coupon_removed = clear_basket(api)
+        return Resp_Combo_EmptyBasket(
+            success=True,
+            items_removed=items_removed,
+            coupon_removed=coupon_removed
+        )
+    except ApiException:
+        return Resp_Combo_EmptyBasket(success=False)
+
+
+def combo_set_basket(
+    api: StoreClient,
+    req: Combo_SetBasket
+) -> Resp_Combo_SetBasket:
+    """
+    Set basket contents to match a specific basket state.
+    Clears basket, adds all items, and applies coupon if present.
+    """
+    try:
+        # 1. Clear basket
+        clear_basket(api)
+
+        # 2. Add all items from contain
+        for item in req.contain.items:
+            api.dispatch(Req_AddProductToBasket(sku=item.sku, quantity=item.quantity))
+
+        # 3. Apply coupon if present
+        if req.contain.coupon:
+            api.dispatch(Req_ApplyCoupon(coupon=req.contain.coupon))
+
+        # 4. Return actual basket state
+        basket = api.dispatch(Req_ViewBasket())
+        return Resp_Combo_SetBasket(success=True, basket=basket)
+
+    except ApiException as e:
+        return Resp_Combo_SetBasket(success=False, error=e.api_error.error)
 
 
 def combo_find_best_coupon_for_products(
@@ -49,10 +106,10 @@ def combo_find_best_coupon_for_products(
     Test each coupon against each item set.
 
     Clears basket before each item set (not before each coupon).
-    Returns raw basket states — agent decides what's best.
+    Returns array of basket states — agent decides what's best.
     Basket is guaranteed to be empty after execution.
     """
-    results: List[ItemSetCouponResult] = []
+    results: List[Resp_ViewBasket] = []
 
     try:
         for item_set in req.suitable_products:  # OUTER loop — product combinations (expensive: clear + add)
@@ -76,21 +133,6 @@ def combo_find_best_coupon_for_products(
                     api.dispatch(Req_AddProductToBasket(sku=item.sku, quantity=item.quantity))
                 except ApiException as e:
                     items_added = False
-                    # Record error for ALL coupons for this item set
-                    for coupon in req.coupons:
-                        results.append(ItemSetCouponResult(
-                            items=item_set,
-                            coupon=coupon,
-                            success=False,
-                            error=ErrorInfo(
-                                method="Req_AddProductToBasket",
-                                api_error=e.api_error,
-                                params={
-                                    "failed_item": {"sku": item.sku, "quantity": item.quantity},
-                                    "item_set": [{"sku": i.sku, "quantity": i.quantity} for i in item_set]
-                                }
-                            )
-                        ))
                     break  # stop adding items for this set
 
             if not items_added:
@@ -102,27 +144,8 @@ def combo_find_best_coupon_for_products(
                     api.dispatch(Req_ApplyCoupon(coupon=coupon))
                     basket = api.dispatch(Req_ViewBasket())
                     api.dispatch(Req_RemoveCoupon())
-
-                    results.append(ItemSetCouponResult(
-                        items=item_set,
-                        coupon=coupon,
-                        success=True,
-                        basket=basket
-                    ))
-                except ApiException as e:
-                    results.append(ItemSetCouponResult(
-                        items=item_set,
-                        coupon=coupon,
-                        success=False,
-                        error=ErrorInfo(
-                            method="Req_ApplyCoupon",
-                            api_error=e.api_error,
-                            params={
-                                "coupon": coupon,
-                                "item_set": [{"sku": i.sku, "quantity": i.quantity} for i in item_set]
-                            }
-                        )
-                    ))
+                    results.append(basket)
+                except ApiException:
                     # Try to remove coupon in case it was partially applied
                     try:
                         api.dispatch(Req_RemoveCoupon())
@@ -142,44 +165,32 @@ def combo_find_best_coupon_for_products(
     )
 
 
-def combo_get_page_limit(
+def combo_get_product_page_limit(
     api: StoreClient,
-    req: Combo_Get_Page_Limit
-) -> Resp_Combo_Get_Page_Limit:
+    req: Combo_Get_Product_Page_Limit
+) -> Resp_Combo_Get_Product_Page_Limit:
     """
-    Discover the page limit by requesting with limit=999.
+    Discover the page limit by requesting more items than allowed.
     Returns the error message containing the actual limit.
     """
     try:
-        api.dispatch(Req_ListProducts(offset=0, limit=999))
+        api.dispatch(Req_ListProducts(offset=0, limit=100))
         # If no error, return a message indicating no limit
-        return Resp_Combo_Get_Page_Limit(error_message="no limit detected")
+        return Resp_Combo_Get_Product_Page_Limit(error_message="no limit detected")
     except ApiException as e:
-        return Resp_Combo_Get_Page_Limit(error_message=e.api_error.error)
+        return Resp_Combo_Get_Product_Page_Limit(error_message=e.api_error.error)
 
 
-def combo_get_all_products(
+def combo_list_all_products(
     api: StoreClient,
-    req: Combo_Get_All_Products
-) -> Resp_Combo_Get_All_Products:
+    req: Combo_List_All_Products
+) -> Resp_Combo_List_All_Products:
     """
-    Fetch all products from the store.
+    List all products from the store.
     Handles pagination automatically.
+    If page_limit is not provided, uses 100 which will trigger an error revealing the actual limit.
     """
-    # First, discover the page limit
-    try:
-        api.dispatch(Req_ListProducts(offset=0, limit=999))
-        page_limit = 100  # fallback if no error
-    except ApiException as e:
-        # Parse limit from error like "page limit exceeded: 999 > 5"
-        match = re.search(r'> (\d+)', e.api_error.error)
-        if match:
-            page_limit = int(match.group(1))
-        else:
-            return Resp_Combo_Get_All_Products(
-                success=False,
-                error=f"Could not parse page limit from: {e.api_error.error}"
-            )
+    page_limit = req.page_limit if req.page_limit is not None else 100
 
     products: List[ProductInfo] = []
     offset = 0
@@ -194,20 +205,20 @@ def combo_get_all_products(
             offset = resp.next_offset
 
         except ApiException as e:
-            return Resp_Combo_Get_All_Products(
+            return Resp_Combo_List_All_Products(
                 success=False,
                 error=f"Failed to list products: {e.api_error.error}"
             )
 
-    return Resp_Combo_Get_All_Products(
+    return Resp_Combo_List_All_Products(
         success=True,
         products=products
     )
 
 
-def validate_task_completion_checklist(
-    req: TaskCompletionCheckList
-) -> Resp_TaskCompletionCheckList:
+def checklist_before_task_completion(
+    req: CheckList_Before_TaskCompletion
+) -> Resp_CheckList_Before_TaskCompletion:
     """
     Validate that agent has properly attempted the task before completing.
 
@@ -220,27 +231,83 @@ def validate_task_completion_checklist(
 
     # Case 1: Agent didn't even try
     if not req.did_you_attempt_to_solve_the_task:
-        return Resp_TaskCompletionCheckList(
+        return Resp_CheckList_Before_TaskCompletion(
             allowed_to_complete=False,
             message="You must attempt to solve the task first. Search for products, check availability, test coupons if needed."
         )
 
     # Case 2: Task has no solution (impossible to complete)
     if not req.does_this_task_have_solution:
-        return Resp_TaskCompletionCheckList(
+        return Resp_CheckList_Before_TaskCompletion(
             allowed_to_complete=True,
             message="Task cannot be completed (no solution). You may report as 'failed' with explanation."
         )
 
     # Case 3: Task has solution but checkout not done
     if not req.was_checkout_done:
-        return Resp_TaskCompletionCheckList(
+        return Resp_CheckList_Before_TaskCompletion(
             allowed_to_complete=False,
-            message="Task has a solution but you haven't completed the purchase. Add items to basket, apply coupon if needed, and call CheckoutBasket."
+            message="Task has a solution but you haven't completed the purchase. Add items to basket, apply coupon if needed, and call Combo_CheckoutBasket."
         )
 
     # Case 4: All good - task has solution and checkout was done
-    return Resp_TaskCompletionCheckList(
+    return Resp_CheckList_Before_TaskCompletion(
         allowed_to_complete=True,
         message="Checkout completed. You may report the task as 'completed'."
     )
+
+
+def combo_checkout_basket(
+    api: StoreClient,
+    req: Combo_CheckoutBasket
+) -> Resp_Combo_CheckoutBasket:
+    """
+    Validate basket contents against task requirements, then checkout if valid.
+
+    Validation rules based on self-control fields:
+    - is_required_items_purchased must be True
+    - is_coupon_condition_violated must be False
+    - is_additional_condition_violated must be False
+    """
+    errors = []
+    tc = req.task_conditions
+
+    # Self-control validation: required items purchased
+    if not req.is_required_items_purchased:
+        errors.append(
+            f"Required items not purchased: task requires '{tc.what_to_buy}' "
+            f"but is_required_items_purchased=False"
+        )
+
+    # Self-control validation: coupon conditions
+    if req.is_coupon_condition_violated:
+        errors.append(
+            f"Coupon condition violated: mentioned_coupons='{tc.mentioned_coupons}', "
+            f"applied_coupon='{req.applied_coupon}'"
+        )
+
+    # Self-control validation: additional conditions
+    if req.is_additional_condition_violated:
+        errors.append(
+            f"Additional condition violated: '{tc.additional_conditions}'"
+        )
+
+    # If validation failed, return error
+    if errors:
+        return Resp_Combo_CheckoutBasket(
+            success=False,
+            validation_error=" | ".join(errors)
+        )
+
+    # Validation passed - perform actual checkout
+    try:
+        result = api.dispatch(Req_CheckoutBasket())
+        return Resp_Combo_CheckoutBasket(
+            success=True,
+            checkout_result=result
+        )
+    except ApiException as e:
+        return Resp_Combo_CheckoutBasket(
+            success=False,
+            validation_error=f"Checkout failed: {e.api_error.error}"
+        )
