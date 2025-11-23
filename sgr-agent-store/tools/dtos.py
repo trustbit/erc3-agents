@@ -53,8 +53,7 @@ class Resp_Combo_Find_Best_Coupon_For_Products(BaseModel):
     """Response from Combo_Find_Best_Coupon_For_Products"""
     success: bool                                    # overall execution status
     results: Optional[List[Resp_ViewBasket]] = None  # array of basket states for each combination
-    fatal_error: Optional[ErrorInfo] = None          # if fatal error occurred
-    error_message: Optional[str] = None              # validation or other error message
+    error_message: Optional[str] = None              # error message if failed
 
 
 # --- Product search tools ---

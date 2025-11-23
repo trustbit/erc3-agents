@@ -18,7 +18,6 @@ from erc3.store import (
 )
 
 from .dtos import (
-    ErrorInfo,
     Combo_Find_Best_Coupon_For_Products,
     Resp_Combo_Find_Best_Coupon_For_Products,
     Combo_Get_Product_Page_Limit,
@@ -126,11 +125,7 @@ def combo_find_best_coupon_for_products(
             except ApiException as e:
                 return Resp_Combo_Find_Best_Coupon_For_Products(
                     success=False,
-                    fatal_error=ErrorInfo(
-                        method="clear_basket",
-                        api_error=e.api_error,
-                        params=None
-                    )
+                    error_message=f"clear_basket failed: {e.api_error.error}"
                 )
 
             # 2. Add items to basket
