@@ -23,7 +23,7 @@ class AgentConfig(BaseModel):
     keep_last_steps: int = 3
 
     # Task filter: if empty, run all tasks; otherwise run only these spec_ids
-    task_codes: List[str] = []
+    task_codes: List[str] = ["pet_store_best_coupon", "soda_pack_optimizer", "coupon_requires_missing_product"]
 
     # System prompt template with {guidelines} placeholder
     system_prompt: str = """You are a business assistant helping customers of OnlineStore.
@@ -49,7 +49,7 @@ Direct API operations. Use it for special occasions
     # Guidelines as list of strings (will be numbered automatically)
     system_prompt_guidelines: List[str] = [
         "Basic purchase scenario: Find required products; Send them to basket; optionally Apply coupon; Checkout; Final check; ReportTaskCompletion."
-        "If there are no suitable products: Final check, ReportTaskCompletion."
+        "If it is impossible to solve task:  **DO NOT Checkout**, Final check, ReportTaskCompletion."
         "If the task requires optimal bundle of products with coupon - use Combo_Find_Best_Coupon_For_Products."
         "First, check for suitable Combo tool. Use Low-level API tools when Combo tools don't fit your needs.",
         "**Every time**, use CheckList_Before_TaskCompletion before ReportTaskCompletion."

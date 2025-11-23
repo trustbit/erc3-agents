@@ -38,10 +38,14 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
         "all",
         description="Filter results: 'cheapest' = min total, 'max_discount' = max discount, 'all' = return all results"
     )
+    page_limit: Optional[int] = Field(
+        None,
+        description="Product catalog pagination limit, if known. If not provided, will use 999 which may cause an error revealing the actual limit."
+    )
     # Self-control field
     all_combinations_included: bool = Field(
         ...,
-        description="Did you include ALL possible product combinations? For example: if task requires 24 sodas and you have 6pk, 12pk, 24pk - did you include [4x6pk], [2x12pk], [1x24pk], AND mixed combinations like [2x6pk + 1x12pk]?"
+        description="Did you include ALL possible product combinations?"
     )
 
 
@@ -182,6 +186,10 @@ class Combo_CheckoutBasket(BaseModel):
     )
 
     # Self-control fields (agent fills based on current basket state)
+    does_this_task_have_solution: bool = Field(
+        ...,
+        description="Can this task be completed? If False, do NOT checkout - go to CheckList_Before_TaskCompletion instead."
+    )
     is_required_items_purchased: bool = Field(
         ...,
         description="Are the required items purchased in the correct quantity?"

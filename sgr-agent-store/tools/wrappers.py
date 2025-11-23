@@ -294,6 +294,13 @@ def combo_checkout_basket(
     - is_coupon_condition_violated must be False
     - is_additional_condition_violated must be False
     """
+    # Check if task has no solution - block checkout
+    if not req.does_this_task_have_solution:
+        return Resp_Combo_CheckoutBasket(
+            success=False,
+            error_message="Task has no solution. Do NOT checkout. Go to CheckList_Before_TaskCompletion, then ReportTaskCompletion."
+        )
+
     errors = []
     tc = req.task_conditions
 
