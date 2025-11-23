@@ -38,10 +38,6 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
         "all",
         description="Filter results: 'cheapest' = min total, 'max_discount' = max discount, 'all' = return all results"
     )
-    page_limit: Optional[int] = Field(
-        None,
-        description="Product catalog pagination limit, if known. If not provided, will use 999 which may cause an error revealing the actual limit."
-    )
     # Self-control field
     all_combinations_included: bool = Field(
         ...,
