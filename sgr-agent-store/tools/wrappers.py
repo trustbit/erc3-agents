@@ -112,7 +112,7 @@ def combo_find_best_coupon_for_products(
     if not req.all_combinations_included:
         return Resp_Combo_Find_Best_Coupon_For_Products(
             success=False,
-            error_message="You indicated that not all product combinations are included. Please add ALL possible combinations (including mixed ones like 2x6pk + 1x12pk) before calling this tool."
+            error_message="You indicated that not all product combinations are included. Please add ALL possible combinations before calling this tool."
         )
 
     results: List[Resp_ViewBasket] = []

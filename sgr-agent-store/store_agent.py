@@ -122,7 +122,9 @@ def compress_history(log: list, keep_last: int = 3) -> list:
                     if "success" in data:
                         compressed["success"] = data["success"]
                     if "error_message" in data:
-                        compressed["error_message"] = data["error_message"]
+                        # Truncate error message to 200 chars
+                        err = data["error_message"]
+                        compressed["error_message"] = err[:200] if len(err) > 200 else err
 
                     compressed_content = json.dumps(compressed) if compressed else '{"compressed": true}'
 
