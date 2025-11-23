@@ -109,6 +109,13 @@ def combo_find_best_coupon_for_products(
     Returns array of basket states — agent decides what's best.
     Basket is guaranteed to be empty after execution.
     """
+    # Self-control validation
+    if not req.all_combinations_included:
+        return Resp_Combo_Find_Best_Coupon_For_Products(
+            success=False,
+            error_message="You indicated that not all product combinations are included. Please add ALL possible combinations (including mixed ones like 2x6pk + 1x12pk) before calling this tool."
+        )
+
     results: List[Resp_ViewBasket] = []
 
     try:

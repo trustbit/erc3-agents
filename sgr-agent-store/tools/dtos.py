@@ -42,6 +42,11 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
         None,
         description="Product catalog pagination limit, if known. If not provided, will use 999 which may cause an error revealing the actual limit."
     )
+    # Self-control field
+    all_combinations_included: bool = Field(
+        ...,
+        description="Did you include ALL possible product combinations? For example: if task requires 24 sodas and you have 6pk, 12pk, 24pk - did you include [4x6pk], [2x12pk], [1x24pk], AND mixed combinations like [2x6pk + 1x12pk]?"
+    )
 
 
 class Resp_Combo_Find_Best_Coupon_For_Products(BaseModel):
@@ -49,6 +54,7 @@ class Resp_Combo_Find_Best_Coupon_For_Products(BaseModel):
     success: bool                                    # overall execution status
     results: Optional[List[Resp_ViewBasket]] = None  # array of basket states for each combination
     fatal_error: Optional[ErrorInfo] = None          # if fatal error occurred
+    error_message: Optional[str] = None              # validation or other error message
 
 
 # --- Product search tools ---
