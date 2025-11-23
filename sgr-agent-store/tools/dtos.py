@@ -144,21 +144,9 @@ class Resp_Combo_SetBasket(BaseModel):
 
 class TaskConditions(BaseModel):
     """Task requirements breakdown for self-control validation"""
-    what_to_buy: str = Field(
-        ...,
-        description="What needs to be purchased according to the task"
-    )
     quantity_required: Optional[int] = Field(
         None,
         description="Exact quantity required by task, if specified"
-    )
-    quantity_required_min: Optional[int] = Field(
-        None,
-        description="Minimum quantity required by task, if specified"
-    )
-    quantity_required_max: Optional[int] = Field(
-        None,
-        description="Maximum quantity allowed by task, if specified"
     )
     mentioned_coupons: Optional[str] = Field(
         None,

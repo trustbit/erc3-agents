@@ -23,7 +23,8 @@ class AgentConfig(BaseModel):
     keep_last_steps: int = 3
 
     # Task filter: if empty, run all tasks; otherwise run only these spec_ids
-    task_codes: List[str] = ["pet_store_best_coupon", "soda_pack_optimizer", "coupon_requires_missing_product"]
+    task_codes: List[str] = []
+    # task_codes: List[str] = ["pet_store_best_coupon", "soda_pack_optimizer", "coupon_requires_missing_product"]
 
     # System prompt template with {guidelines} placeholder
     system_prompt: str = """You are a business assistant helping customers of OnlineStore.

@@ -1,4 +1,5 @@
 import json
+import subprocess
 import textwrap
 import time
 from datetime import datetime
@@ -13,6 +14,20 @@ from erc3 import ERC3
 # Log files go to repository root (parent of sgr-agent-store)
 REPO_ROOT = Path(__file__).parent.parent
 SESSIONS_HISTORY_FILE = REPO_ROOT / "sessions_history.json"
+
+
+def get_git_commit() -> str:
+    """Get current git commit hash (short form)"""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except Exception:
+        return ""
 
 config = default_config
 core = ERC3()
@@ -45,6 +60,9 @@ status = core.session_status(res.session_id)
 print(f"Session has {len(status.tasks)} tasks")
 print(f"Log file: {LOG_FILE}")
 
+# Track scores for session summary
+task_scores = []
+
 for task in status.tasks:
     print("="*40)
     print(f"Starting Task: {task.task_id} ({task.spec_id}): {task.task_text}")
@@ -64,8 +82,14 @@ for task in status.tasks:
         print(e)
     result = core.complete_task(task)
     if result.eval:
+        score = result.eval.score
+        task_scores.append(score)
         explain = textwrap.indent(result.eval.logs, "  ")
-        print(f"\nSCORE: {result.eval.score}\n{explain}\n")
+        print(f"\nSCORE: {score}\n{explain}\n")
+        # Write score to log file
+        with open(LOG_FILE, "a") as f:
+            f.write(f"SCORE: {score}\n")
+            f.write(f"{result.eval.logs}\n\n")
 
 core.submit_session(res.session_id)
 print(f"\nSession submitted: https://erc.timetoact-group.at/sessions/{res.session_id}")
@@ -79,21 +103,17 @@ if Path(LOG_FILE).exists():
     with open(LOG_FILE, "r") as f:
         session_log_content = f.read()
 
+# Calculate session score
+session_score = sum(task_scores) / len(task_scores) if task_scores else 0.0
+
 # Build session record
 session_record = {
     "start_timestamp": session_start_timestamp,
     "session_id": res.session_id,
-    "config": {
-        "model_id": config.model_id,
-        "benchmark": config.benchmark,
-        "workspace": config.workspace,
-        "session_name": config.session_name,
-        "architecture": config.architecture,
-        "max_completion_tokens": config.max_completion_tokens,
-        "task_timeout_sec": config.task_timeout_sec,
-        "keep_last_steps": config.keep_last_steps,
-        "task_codes": config.task_codes,
-    },
+    "commit": get_git_commit(),
+    "session_score": round(session_score, 3),
+    "session_tasks_quantity": len(task_scores),
+    "config": config.model_dump(),
     "token_statistics": session_tokens,
     "total_time_sec": round(total_time_sec, 1),
     "session_log": session_log_content,

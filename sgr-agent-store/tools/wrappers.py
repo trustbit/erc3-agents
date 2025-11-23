@@ -318,10 +318,7 @@ def combo_checkout_basket(
 
     # Self-control validation: required items purchased
     if not req.is_required_items_purchased:
-        errors.append(
-            f"Required items not purchased: task requires '{tc.what_to_buy}' "
-            f"but is_required_items_purchased=False"
-        )
+        errors.append("Required items not purchased: is_required_items_purchased=False")
 
     # Self-control validation: coupon conditions
     if req.is_coupon_condition_violated:
