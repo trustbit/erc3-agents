@@ -2,8 +2,8 @@
 
 from .dtos import (
     ErrorInfo,
-    Combo_Find_Best_Coupon_For_Products,
-    Resp_Combo_Find_Best_Coupon_For_Products,
+    Combo_Find_Best_Combination_For_Products_And_Coupons,
+    Resp_Combo_Find_Best_Combination_For_Products_And_Coupons,
     Combo_Get_Product_Page_Limit,
     Resp_Combo_Get_Product_Page_Limit,
     Combo_List_All_Products,
@@ -17,21 +17,25 @@ from .dtos import (
     Resp_Combo_CheckoutBasket,
     CheckList_Before_TaskCompletion,
     Resp_CheckList_Before_TaskCompletion,
+    ProductForCombination,
+    Combo_Generate_Product_Combinations,
+    Resp_Combo_Generate_Product_Combinations,
 )
 from .wrappers import (
-    combo_find_best_coupon_for_products,
+    combo_find_best_combination_for_products_and_coupons,
     combo_get_product_page_limit,
     combo_list_all_products,
     combo_empty_basket,
     combo_set_basket,
     combo_checkout_basket,
     checklist_before_task_completion,
+    combo_generate_product_combinations,
 )
 
 __all__ = [
     "ErrorInfo",
-    "Combo_Find_Best_Coupon_For_Products",
-    "Resp_Combo_Find_Best_Coupon_For_Products",
+    "Combo_Find_Best_Combination_For_Products_And_Coupons",
+    "Resp_Combo_Find_Best_Combination_For_Products_And_Coupons",
     "Combo_Get_Product_Page_Limit",
     "Resp_Combo_Get_Product_Page_Limit",
     "Combo_List_All_Products",
@@ -45,11 +49,15 @@ __all__ = [
     "Resp_Combo_CheckoutBasket",
     "CheckList_Before_TaskCompletion",
     "Resp_CheckList_Before_TaskCompletion",
-    "combo_find_best_coupon_for_products",
+    "ProductForCombination",
+    "Combo_Generate_Product_Combinations",
+    "Resp_Combo_Generate_Product_Combinations",
+    "combo_find_best_combination_for_products_and_coupons",
     "combo_get_product_page_limit",
     "combo_list_all_products",
     "combo_empty_basket",
     "combo_set_basket",
     "combo_checkout_basket",
     "checklist_before_task_completion",
+    "combo_generate_product_combinations",
 ]

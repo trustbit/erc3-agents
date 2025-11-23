@@ -8,8 +8,8 @@ from openai import OpenAI, RateLimitError
 
 from config import AgentConfig, default_config
 from tools import (
-    Combo_Find_Best_Coupon_For_Products,
-    combo_find_best_coupon_for_products,
+    Combo_Find_Best_Combination_For_Products_And_Coupons,
+    combo_find_best_combination_for_products_and_coupons,
     Combo_Get_Product_Page_Limit,
     combo_get_product_page_limit,
     Combo_List_All_Products,
@@ -22,9 +22,14 @@ from tools import (
     combo_checkout_basket,
     CheckList_Before_TaskCompletion,
     checklist_before_task_completion,
+    Combo_Generate_Product_Combinations,
+    combo_generate_product_combinations,
 )
 
-client = OpenAI()
+client = OpenAI(
+    timeout=60.0,      # timeout per request (seconds)
+    max_retries=3,     # auto-retry on timeout/5xx errors
+)
 
 class ReportTaskCompletion(BaseModel):
     tool: Literal["report_completion"]
@@ -40,12 +45,13 @@ class NextStep(BaseModel):
     # Routing to one of the tools to execute the first remaining step
     function: Union[
         # Combo tools (aggregate multiple API calls)
-        Combo_Find_Best_Coupon_For_Products,
+        Combo_Find_Best_Combination_For_Products_And_Coupons,
         Combo_Get_Product_Page_Limit,
         Combo_List_All_Products,
         Combo_EmptyBasket,
         Combo_SetBasket,
         Combo_CheckoutBasket,
+        Combo_Generate_Product_Combinations,
         # API tools (direct operations)
         # store.Req_ListProducts,
         store.Req_ViewBasket,
@@ -329,8 +335,8 @@ def run_agent(
             # Handle Combo tools and checklist separately
             if isinstance(job.function, CheckList_Before_TaskCompletion):
                 result = checklist_before_task_completion(job.function)
-            elif isinstance(job.function, Combo_Find_Best_Coupon_For_Products):
-                result = combo_find_best_coupon_for_products(store_api, job.function)
+            elif isinstance(job.function, Combo_Find_Best_Combination_For_Products_And_Coupons):
+                result = combo_find_best_combination_for_products_and_coupons(store_api, job.function)
             elif isinstance(job.function, Combo_Get_Product_Page_Limit):
                 result = combo_get_product_page_limit(store_api, job.function)
             elif isinstance(job.function, Combo_List_All_Products):
@@ -341,6 +347,8 @@ def run_agent(
                 result = combo_set_basket(store_api, job.function)
             elif isinstance(job.function, Combo_CheckoutBasket):
                 result = combo_checkout_basket(store_api, job.function)
+            elif isinstance(job.function, Combo_Generate_Product_Combinations):
+                result = combo_generate_product_combinations(job.function)
             else:
                 # Regular API tools
                 result = store_api.dispatch(job.function)

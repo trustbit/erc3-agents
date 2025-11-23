@@ -16,7 +16,7 @@ class ErrorInfo(BaseModel):
     params: Optional[dict] = None        # parameters that caused the error
 
 
-class Combo_Find_Best_Coupon_For_Products(BaseModel):
+class Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
     """
     Test each coupon against each product combination.
 
@@ -32,15 +32,11 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
     )
     coupons: List[str] = Field(
         ...,
-        description="List of coupon codes to test against each product combination"
+        description="List of coupon codes to test against each product combination. Can be empty if no coupons available."
     )
     filter: Literal["cheapest", "max_discount", "all"] = Field(
         "all",
         description="Filter results: 'cheapest' = min total, 'max_discount' = max discount, 'all' = return all results"
-    )
-    page_limit: Optional[int] = Field(
-        None,
-        description="Product catalog pagination limit, if known. If not provided, will use 999 which may cause an error revealing the actual limit."
     )
     # Self-control field
     all_combinations_included: bool = Field(
@@ -49,8 +45,8 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
     )
 
 
-class Resp_Combo_Find_Best_Coupon_For_Products(BaseModel):
-    """Response from Combo_Find_Best_Coupon_For_Products"""
+class Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
+    """Response from Combo_Find_Best_Combination_For_Products_And_Coupons"""
     success: bool                                    # overall execution status
     results: Optional[List[Resp_ViewBasket]] = None  # array of basket states for each combination
     error_message: Optional[str] = None              # error message if failed
@@ -168,9 +164,9 @@ class TaskConditions(BaseModel):
         None,
         description="Coupons mentioned/offered in the task description"
     )
-    additional_conditions: Optional[str] = Field(
+    other_conditions: Optional[str] = Field(
         None,
-        description="Any additional conditions from the task"
+        description="all other conditions mentioned in the task except of products, quantity, coupon"
     )
 
 
@@ -182,7 +178,7 @@ class Combo_CheckoutBasket(BaseModel):
     # Task conditions (first position - agent must analyze the task)
     task_conditions: TaskConditions = Field(
         ...,
-        description="Breakdown of task requirements"
+        description="Breakdown of task requirements: products, quantity, coupons, other conditions"
     )
 
     # Self-control fields (agent fills based on current basket state)
@@ -239,3 +235,42 @@ class Resp_CheckList_Before_TaskCompletion(BaseModel):
     """Response from CheckList_Before_TaskCompletion validation"""
     allowed_to_complete: bool
     message: str
+
+
+# --- Product combination generator ---
+
+class ProductForCombination(BaseModel):
+    """Product info for combination generation"""
+    sku: str = Field(..., description="Product SKU")
+    available_quantity: int = Field(..., description="Available stock quantity")
+    units_in_single_sku: int = Field(
+        ...,
+        description="Number of individual units included in a single SKU, inferred from the product name (e.g., '6-pack' = 6, '12-pack' = 12)"
+    )
+
+
+class Combo_Generate_Product_Combinations(BaseModel):
+    """
+    Generate all valid product combinations that sum to exact target units.
+
+    Use this when task requires buying exact quantity (e.g., "buy 24 sodas")
+    and products come in different pack sizes (6pk, 12pk, 24pk).
+
+    Returns all combinations where sum of (quantity × units_in_single_sku) = total_units_target.
+    Respects available_quantity limits.
+    """
+    products: List[ProductForCombination] = Field(
+        ...,
+        description="List of products with SKU, available quantity, and units per SKU"
+    )
+    total_units_target: int = Field(
+        ...,
+        description="The total number of individual units desired in the cart"
+    )
+
+
+class Resp_Combo_Generate_Product_Combinations(BaseModel):
+    """Response from Combo_Generate_Product_Combinations"""
+    success: bool
+    combinations: Optional[List[List[ProductLine]]] = None  # list of valid combinations
+    error_message: Optional[str] = None

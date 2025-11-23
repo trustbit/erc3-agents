@@ -18,8 +18,8 @@ from erc3.store import (
 )
 
 from .dtos import (
-    Combo_Find_Best_Coupon_For_Products,
-    Resp_Combo_Find_Best_Coupon_For_Products,
+    Combo_Find_Best_Combination_For_Products_And_Coupons,
+    Resp_Combo_Find_Best_Combination_For_Products_And_Coupons,
     Combo_Get_Product_Page_Limit,
     Resp_Combo_Get_Product_Page_Limit,
     Combo_List_All_Products,
@@ -32,6 +32,8 @@ from .dtos import (
     Resp_Combo_CheckoutBasket,
     CheckList_Before_TaskCompletion,
     Resp_CheckList_Before_TaskCompletion,
+    Combo_Generate_Product_Combinations,
+    Resp_Combo_Generate_Product_Combinations,
 )
 
 
@@ -87,7 +89,9 @@ def combo_set_basket(
 
         # 3. Apply coupon if provided
         if req.coupon:
-            api.dispatch(Req_ApplyCoupon(coupon=req.coupon))
+            result = api.dispatch(Req_ApplyCoupon(coupon=req.coupon))
+            if hasattr(result, 'error') and result.error:
+                return Resp_Combo_SetBasket(success=False, error_message=result.error)
 
         # 4. Return actual basket state
         basket = api.dispatch(Req_ViewBasket())
@@ -97,10 +101,10 @@ def combo_set_basket(
         return Resp_Combo_SetBasket(success=False, error_message=e.api_error.error)
 
 
-def combo_find_best_coupon_for_products(
+def combo_find_best_combination_for_products_and_coupons(
     api: StoreClient,
-    req: Combo_Find_Best_Coupon_For_Products
-) -> Resp_Combo_Find_Best_Coupon_For_Products:
+    req: Combo_Find_Best_Combination_For_Products_And_Coupons
+) -> Resp_Combo_Find_Best_Combination_For_Products_And_Coupons:
     """
     Test each coupon against each item set.
 
@@ -110,7 +114,7 @@ def combo_find_best_coupon_for_products(
     """
     # Self-control validation
     if not req.all_combinations_included:
-        return Resp_Combo_Find_Best_Coupon_For_Products(
+        return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
             success=False,
             error_message="You indicated that not all product combinations are included. Please add ALL possible combinations before calling this tool."
         )
@@ -123,7 +127,7 @@ def combo_find_best_coupon_for_products(
             try:
                 clear_basket(api)
             except ApiException as e:
-                return Resp_Combo_Find_Best_Coupon_For_Products(
+                return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
                     success=False,
                     error_message=f"clear_basket failed: {e.api_error.error}"
                 )
@@ -141,18 +145,26 @@ def combo_find_best_coupon_for_products(
                 continue  # move to next item set
 
             # 3. Test each coupon (INNER loop — cheap: apply/remove coupon)
-            for coupon in req.coupons:
+            if req.coupons:
+                for coupon in req.coupons:
+                    try:
+                        api.dispatch(Req_ApplyCoupon(coupon=coupon))
+                        basket = api.dispatch(Req_ViewBasket())
+                        api.dispatch(Req_RemoveCoupon())
+                        results.append(basket)
+                    except ApiException:
+                        # Try to remove coupon in case it was partially applied
+                        try:
+                            api.dispatch(Req_RemoveCoupon())
+                        except:
+                            pass
+            else:
+                # No coupons provided — test combination without coupon
                 try:
-                    api.dispatch(Req_ApplyCoupon(coupon=coupon))
                     basket = api.dispatch(Req_ViewBasket())
-                    api.dispatch(Req_RemoveCoupon())
                     results.append(basket)
                 except ApiException:
-                    # Try to remove coupon in case it was partially applied
-                    try:
-                        api.dispatch(Req_RemoveCoupon())
-                    except:
-                        pass
+                    pass
 
     finally:
         # 4. ALWAYS clear basket on exit
@@ -175,7 +187,7 @@ def combo_find_best_coupon_for_products(
             max_discount = max(b.discount for b in results)
             results = [b for b in results if b.discount == max_discount]
 
-    return Resp_Combo_Find_Best_Coupon_For_Products(
+    return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
         success=True,
         results=results
     )
@@ -321,7 +333,7 @@ def combo_checkout_basket(
     # Self-control validation: additional conditions
     if req.is_additional_condition_violated:
         errors.append(
-            f"Additional condition violated: '{tc.additional_conditions}'"
+            f"Additional condition violated: '{tc.other_conditions}'"
         )
 
     # If validation failed, return error
@@ -343,3 +355,65 @@ def combo_checkout_basket(
             success=False,
             error_message=f"Checkout failed: {e.api_error.error}"
         )
+
+
+def combo_generate_product_combinations(
+    req: Combo_Generate_Product_Combinations
+) -> Resp_Combo_Generate_Product_Combinations:
+    """
+    Generate all valid product combinations that sum to exact target units.
+
+    Uses recursive backtracking to find all combinations where:
+    sum(quantity[i] * units_in_single_sku[i]) == total_units_target
+
+    Each product quantity is limited by available_quantity.
+    """
+    if not req.products:
+        return Resp_Combo_Generate_Product_Combinations(
+            success=False,
+            error_message="No products provided"
+        )
+
+    if req.total_units_target <= 0:
+        return Resp_Combo_Generate_Product_Combinations(
+            success=False,
+            error_message="total_units_target must be positive"
+        )
+
+    combinations: List[List[ProductLine]] = []
+
+    def backtrack(index: int, remaining: int, current: List[ProductLine]):
+        """Recursive backtracking to find all valid combinations"""
+        if remaining == 0:
+            # Found valid combination
+            combinations.append(current.copy())
+            return
+
+        if remaining < 0 or index >= len(req.products):
+            return
+
+        product = req.products[index]
+        units = product.units_in_single_sku
+        max_qty = min(product.available_quantity, remaining // units) if units > 0 else 0
+
+        # Try each possible quantity for this product (including 0)
+        for qty in range(max_qty + 1):
+            if qty > 0:
+                current.append(ProductLine(sku=product.sku, quantity=qty))
+            backtrack(index + 1, remaining - qty * units, current)
+            if qty > 0:
+                current.pop()
+
+    backtrack(0, req.total_units_target, [])
+
+    if not combinations:
+        return Resp_Combo_Generate_Product_Combinations(
+            success=True,
+            combinations=[],
+            error_message=f"No valid combinations found for target {req.total_units_target} units"
+        )
+
+    return Resp_Combo_Generate_Product_Combinations(
+        success=True,
+        combinations=combinations
+    )
