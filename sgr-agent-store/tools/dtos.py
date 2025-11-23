@@ -21,7 +21,7 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
     Test each coupon against each product combination.
 
     Clears basket before each combination (not before each coupon).
-    Returns raw basket states — agent decides what's best.
+    Returns filtered basket states based on filter parameter.
 
     IMPORTANT: After this tool completes, the basket is EMPTY.
     You must add products to basket again before checkout.
@@ -33,6 +33,10 @@ class Combo_Find_Best_Coupon_For_Products(BaseModel):
     coupons: List[str] = Field(
         ...,
         description="List of coupon codes to test against each product combination"
+    )
+    filter: Literal["cheapest", "max_discount", "all"] = Field(
+        "all",
+        description="Filter results: 'cheapest' = min total, 'max_discount' = max discount, 'all' = return all results"
     )
     page_limit: Optional[int] = Field(
         None,
@@ -71,9 +75,13 @@ class Combo_List_All_Products(BaseModel):
     Fetches ALL products (handles pagination automatically).
     Use this instead of manually paginating through Req_ListProducts.
     """
-    page_limit: Optional[int] = Field(
+    page_limit: int = Field(
         None,
-        description="Product catalog pagination limit, if known"
+        description="Product catalog pagination limit, if known. Otherwise set 100"
+    )
+    product_name_exact: Optional[str] = Field(
+        None,
+        description="ONLY use if you know the EXACT product name. Filters results to match this name exactly."
     )
 
 
@@ -81,7 +89,8 @@ class Resp_Combo_List_All_Products(BaseModel):
     """Response from Combo_List_All_Products"""
     success: bool
     products: Optional[List[ProductInfo]] = None
-    error: Optional[str] = None
+    error_message: Optional[str] = None
+    hint: Optional[str] = None
 
 
 # --- Basket operations ---
@@ -102,16 +111,24 @@ class Resp_Combo_EmptyBasket(BaseModel):
     coupon_removed: bool = False  # whether a coupon was removed
 
 
+class BasketAddLine(BaseModel):
+    """Item to add to basket"""
+    sku: str
+    quantity: int
+
+
 class Combo_SetBasket(BaseModel):
     """
-    Set basket contents to match a specific basket state.
-
-    Clears basket, adds all items from contain, and applies coupon if present.
-    Use this to restore a basket state from Combo_Find_Best_Coupon_For_Products results.
+    Set basket contents to specified products and coupon.
+    Clears basket, adds all products, and applies coupon if provided.
     """
-    contain: Resp_ViewBasket = Field(
+    products: List[BasketAddLine] = Field(
         ...,
-        description="Target basket state to set (from Combo_Find_Best_Coupon_For_Products results)"
+        description="Products to add to basket"
+    )
+    coupon: Optional[str] = Field(
+        None,
+        description="Coupon code to apply (optional)"
     )
 
 
@@ -119,7 +136,7 @@ class Resp_Combo_SetBasket(BaseModel):
     """Response from Combo_SetBasket"""
     success: bool
     basket: Optional[Resp_ViewBasket] = None  # actual basket state after setting
-    error: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 # --- Checkout with self-control ---
@@ -170,15 +187,15 @@ class Combo_CheckoutBasket(BaseModel):
     )
     applied_coupon: Optional[str] = Field(
         None,
-        description="Which coupon is currently applied to the basket"
+        description="Which coupon is currently applied to the basket?"
     )
     is_coupon_condition_violated: bool = Field(
         ...,
-        description="Is the coupon application condition violated? (e.g. wrong items for coupon)"
+        description="Is the coupon application condition violated?"
     )
     is_additional_condition_violated: bool = Field(
         ...,
-        description="Are any additional task conditions violated? (e.g. 'cheapest', 'best deal' requirements)"
+        description="Are any additional task conditions violated?"
     )
 
 
@@ -186,7 +203,7 @@ class Resp_Combo_CheckoutBasket(BaseModel):
     """Response from Combo_CheckoutBasket"""
     success: bool
     checkout_result: Optional[Resp_CheckoutBasket] = None  # actual checkout response if success
-    validation_error: Optional[str] = None  # validation error message if failed
+    error_message: Optional[str] = None  # validation or checkout error message if failed
 
 
 # --- Task completion self-control ---
@@ -194,17 +211,14 @@ class Resp_Combo_CheckoutBasket(BaseModel):
 class CheckList_Before_TaskCompletion(BaseModel):
     """
     Self-control checklist before completing a task.
-
-    REQUIRED: You MUST call this tool before ReportTaskCompletion.
-    This validates that you've properly attempted the task.
     """
     did_you_attempt_to_solve_the_task: bool = Field(
         ...,
-        description="Did you try to solve the task? (searched products, tested coupons, etc.)"
+        description="Did you try to solve the task?"
     )
     does_this_task_have_solution: bool = Field(
         ...,
-        description="Can this task be completed? (products available, budget sufficient, etc.)"
+        description="Can this task be completed?"
     )
     was_checkout_done: bool = Field(
         ...,

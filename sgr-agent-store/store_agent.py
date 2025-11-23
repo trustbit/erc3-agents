@@ -68,8 +68,66 @@ CLI_CLR = "\x1B[0m"
 MAX_RETRIES = 5
 RATE_LIMIT_WAIT = 60  # seconds (TPM limit needs ~1 min to reset)
 
+# History compression settings
+KEEP_LAST_STEPS = 3  # keep full details for last N steps, compress older ones
+
 # Session-level token tracking (persists across tasks)
 session_tokens = {"prompt": 0, "completion": 0, "total": 0}
+
+
+def compress_history(log: list, keep_last: int = KEEP_LAST_STEPS) -> None:
+    """
+    Compress older steps in conversation history to reduce token usage.
+    Keeps full details for last `keep_last` steps, compresses older ones.
+
+    For compressed steps, keeps only: current_state, plan, function, error_message
+    """
+    import json
+
+    # Find all assistant+tool message pairs (each step = 2 messages)
+    # log structure: [system, user, assistant1, tool1, assistant2, tool2, ...]
+    # First 2 are system+user, then pairs of (assistant, tool)
+
+    if len(log) <= 2:
+        return  # Only system + user, nothing to compress
+
+    step_messages = log[2:]  # Skip system and user
+    num_steps = len(step_messages) // 2
+
+    if num_steps <= keep_last:
+        return  # Not enough steps to compress
+
+    steps_to_compress = num_steps - keep_last
+
+    for i in range(steps_to_compress):
+        tool_idx = 2 + i * 2 + 1  # Index of tool message in log
+
+        if tool_idx >= len(log):
+            break
+
+        tool_msg = log[tool_idx]
+        if tool_msg.get("role") != "tool":
+            continue
+
+        # Try to parse and compress the tool content
+        try:
+            content = tool_msg.get("content", "")
+            data = json.loads(content)
+
+            # Keep only essential fields
+            compressed = {}
+            if "error_message" in data:
+                compressed["error_message"] = data["error_message"]
+            elif "success" in data:
+                compressed["success"] = data["success"]
+                if not data["success"] and "error_message" in data:
+                    compressed["error_message"] = data["error_message"]
+
+            # Replace with compressed version
+            tool_msg["content"] = json.dumps(compressed) if compressed else '{"compressed": true}'
+        except (json.JSONDecodeError, TypeError):
+            # If can't parse, leave as is
+            pass
 
 
 def run_agent(
@@ -125,6 +183,9 @@ def run_agent(
         print(f"Next {step}... ", end="")
 
         started = time.time()
+
+        # Compress history to reduce token usage
+        compress_history(log)
 
         # Retry loop for rate limit errors
         completion = None

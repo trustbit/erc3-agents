@@ -75,27 +75,27 @@ def combo_set_basket(
     req: Combo_SetBasket
 ) -> Resp_Combo_SetBasket:
     """
-    Set basket contents to match a specific basket state.
-    Clears basket, adds all items, and applies coupon if present.
+    Set basket contents to specified products and coupon.
+    Clears basket, adds all products, and applies coupon if provided.
     """
     try:
         # 1. Clear basket
         clear_basket(api)
 
-        # 2. Add all items from contain
-        for item in req.contain.items:
+        # 2. Add all products
+        for item in req.products:
             api.dispatch(Req_AddProductToBasket(sku=item.sku, quantity=item.quantity))
 
-        # 3. Apply coupon if present
-        if req.contain.coupon:
-            api.dispatch(Req_ApplyCoupon(coupon=req.contain.coupon))
+        # 3. Apply coupon if provided
+        if req.coupon:
+            api.dispatch(Req_ApplyCoupon(coupon=req.coupon))
 
         # 4. Return actual basket state
         basket = api.dispatch(Req_ViewBasket())
         return Resp_Combo_SetBasket(success=True, basket=basket)
 
     except ApiException as e:
-        return Resp_Combo_SetBasket(success=False, error=e.api_error.error)
+        return Resp_Combo_SetBasket(success=False, error_message=e.api_error.error)
 
 
 def combo_find_best_coupon_for_products(
@@ -164,6 +164,15 @@ def combo_find_best_coupon_for_products(
         if not hasattr(basket, 'discount') or basket.discount is None:
             basket.discount = basket.subtotal - basket.total
 
+    # 6. Apply filter
+    if results and req.filter != "all":
+        if req.filter == "cheapest":
+            min_total = min(b.total for b in results)
+            results = [b for b in results if b.total == min_total]
+        elif req.filter == "max_discount":
+            max_discount = max(b.discount for b in results)
+            results = [b for b in results if b.discount == max_discount]
+
     return Resp_Combo_Find_Best_Coupon_For_Products(
         success=True,
         results=results
@@ -212,12 +221,21 @@ def combo_list_all_products(
         except ApiException as e:
             return Resp_Combo_List_All_Products(
                 success=False,
-                error=f"Failed to list products: {e.api_error.error}"
+                error_message=f"Failed to list products: {e.api_error.error}"
             )
+
+    # Filter by exact product name if provided
+    hint = None
+    if req.product_name_exact:
+        filtered = [p for p in products if p.name == req.product_name_exact]
+        if not filtered:
+            hint = f"Product '{req.product_name_exact}' not found. Call this method without product_name_exact to get the full product list."
+        products = filtered
 
     return Resp_Combo_List_All_Products(
         success=True,
-        products=products
+        products=products,
+        hint=hint
     )
 
 
@@ -301,7 +319,7 @@ def combo_checkout_basket(
     if errors:
         return Resp_Combo_CheckoutBasket(
             success=False,
-            validation_error=" | ".join(errors)
+            error_message=" | ".join(errors)
         )
 
     # Validation passed - perform actual checkout
@@ -314,5 +332,5 @@ def combo_checkout_basket(
     except ApiException as e:
         return Resp_Combo_CheckoutBasket(
             success=False,
-            validation_error=f"Checkout failed: {e.api_error.error}"
+            error_message=f"Checkout failed: {e.api_error.error}"
         )
