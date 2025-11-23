@@ -212,3 +212,18 @@ def combo_tool(api, primary_params, secondary_params) -> Resp_Combo:
 - [ ] Fatal errors terminate execution
 - [ ] Local errors are recorded in results with parameters
 - [ ] Response contains enough information for agent to make decisions
+
+---
+
+## Claude Code Rules
+
+### Working Directory
+- All relative paths are resolved from agent folder (e.g., `sgr-agent-store/`)
+- Shell scripts `cd` into agent folder before running Python
+
+### Session Management
+- Agent session log (`logs/session.log`) — do NOT monitor, analyze only AFTER session completes
+- Process stdout/stderr — DO monitor to detect errors and take action
+
+### Syntax Checking
+- After syntax check via `python -m py_compile`, run `./del_compiled.sh` to clean up artifacts

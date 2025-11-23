@@ -4,3 +4,5 @@ venv
 .idea/
 __pycache__/
 *.pyc
+*.log
+sgr-agent-store/logs/sessions_history.json

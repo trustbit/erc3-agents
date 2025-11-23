@@ -18,8 +18,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Log files go to repository root (parent of sgr-agent-store)
-REPO_ROOT = Path(__file__).parent.parent
 from erc3 import ERC3, TaskInfo
 from store_agent import run_agent
 from config import AgentConfig, default_config
@@ -57,8 +55,9 @@ task = SingleTask(
     task_text=task_detail.text
 )
 
-# Create log file in repository root
-LOG_FILE = str(REPO_ROOT / f"task_{spec_id}.log")
+# Log file path from config
+LOG_FILE = f"{config.task_log_dir}/task_{spec_id}.log"
+Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
 with open(LOG_FILE, "w") as f:
     f.write(f"Task: {result.task_id}\n")
     f.write(f"Spec: {spec_id}\n")
