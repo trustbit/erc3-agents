@@ -75,59 +75,72 @@ KEEP_LAST_STEPS = 3  # keep full details for last N steps, compress older ones
 session_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
 
-def compress_history(log: list, keep_last: int = KEEP_LAST_STEPS) -> None:
+def compress_history(log: list, keep_last: int = KEEP_LAST_STEPS) -> list:
     """
-    Compress older steps in conversation history to reduce token usage.
+    Create a compressed copy of conversation history for API calls.
     Keeps full details for last `keep_last` steps, compresses older ones.
 
-    For compressed steps, keeps only: current_state, plan, function, error_message
+    Returns a new list - does NOT modify the original log.
+
+    For compressed steps, keeps only: success, error_message fields in tool responses.
     """
     import json
+    import copy
 
-    # Find all assistant+tool message pairs (each step = 2 messages)
     # log structure: [system, user, assistant1, tool1, assistant2, tool2, ...]
     # First 2 are system+user, then pairs of (assistant, tool)
 
     if len(log) <= 2:
-        return  # Only system + user, nothing to compress
+        return log  # Only system + user, nothing to compress
 
     step_messages = log[2:]  # Skip system and user
     num_steps = len(step_messages) // 2
 
     if num_steps <= keep_last:
-        return  # Not enough steps to compress
+        return log  # Not enough steps to compress
+
+    # Create a shallow copy of the list, deep copy only messages we'll modify
+    result = log[:2]  # system + user (no changes)
 
     steps_to_compress = num_steps - keep_last
 
-    for i in range(steps_to_compress):
-        tool_idx = 2 + i * 2 + 1  # Index of tool message in log
+    for i in range(num_steps):
+        assistant_idx = i * 2
+        tool_idx = i * 2 + 1
 
-        if tool_idx >= len(log):
-            break
+        if assistant_idx < len(step_messages):
+            result.append(step_messages[assistant_idx])  # assistant message unchanged
 
-        tool_msg = log[tool_idx]
-        if tool_msg.get("role") != "tool":
-            continue
+        if tool_idx < len(step_messages):
+            tool_msg = step_messages[tool_idx]
 
-        # Try to parse and compress the tool content
-        try:
-            content = tool_msg.get("content", "")
-            data = json.loads(content)
+            if i < steps_to_compress and tool_msg.get("role") == "tool":
+                # Compress this tool message
+                try:
+                    content = tool_msg.get("content", "")
+                    data = json.loads(content)
 
-            # Keep only essential fields
-            compressed = {}
-            if "error_message" in data:
-                compressed["error_message"] = data["error_message"]
-            elif "success" in data:
-                compressed["success"] = data["success"]
-                if not data["success"] and "error_message" in data:
-                    compressed["error_message"] = data["error_message"]
+                    # Keep only essential fields
+                    compressed = {}
+                    if "success" in data:
+                        compressed["success"] = data["success"]
+                    if "error_message" in data:
+                        compressed["error_message"] = data["error_message"]
 
-            # Replace with compressed version
-            tool_msg["content"] = json.dumps(compressed) if compressed else '{"compressed": true}'
-        except (json.JSONDecodeError, TypeError):
-            # If can't parse, leave as is
-            pass
+                    compressed_content = json.dumps(compressed) if compressed else '{"compressed": true}'
+
+                    # Create a copy with compressed content
+                    compressed_msg = copy.copy(tool_msg)
+                    compressed_msg["content"] = compressed_content
+                    result.append(compressed_msg)
+                except (json.JSONDecodeError, TypeError):
+                    # If can't parse, keep original
+                    result.append(tool_msg)
+            else:
+                # Keep original (recent step or not a tool message)
+                result.append(tool_msg)
+
+    return result
 
 
 def run_agent(
@@ -184,8 +197,8 @@ def run_agent(
 
         started = time.time()
 
-        # Compress history to reduce token usage
-        compress_history(log)
+        # Create compressed history for API call (original log stays intact)
+        messages_for_api = compress_history(log)
 
         # Retry loop for rate limit errors
         completion = None
@@ -194,7 +207,7 @@ def run_agent(
                 completion = client.beta.chat.completions.parse(
                     model=config.model_id,
                     response_format=NextStep,
-                    messages=log,
+                    messages=messages_for_api,
                     max_completion_tokens=config.max_completion_tokens,
                 )
                 break  # Success, exit retry loop
