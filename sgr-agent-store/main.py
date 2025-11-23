@@ -21,9 +21,6 @@ core = ERC3()
 session_start_time = time.time()
 session_start_timestamp = datetime.now().isoformat()
 
-# Filter tasks by spec_id. If empty, run all tasks.
-# Example: TASK_CODES = ["soda_pack_optimizer", "pet_store_best_coupon"]
-TASK_CODES = []
 
 # Start session with metadata
 res = core.start_session(
@@ -52,9 +49,9 @@ for task in status.tasks:
     print("="*40)
     print(f"Starting Task: {task.task_id} ({task.spec_id}): {task.task_text}")
 
-    # Skip tasks not in TASK_CODES (if filter is set)
-    if TASK_CODES and task.spec_id not in TASK_CODES:
-        print("SKIPPED (not in TASK_CODES)")
+    # Skip tasks not in task_codes (if filter is set)
+    if config.task_codes and task.spec_id not in config.task_codes:
+        print("SKIPPED (not in task_codes)")
         core.start_task(task)
         core.complete_task(task)
         continue
@@ -94,6 +91,8 @@ session_record = {
         "architecture": config.architecture,
         "max_completion_tokens": config.max_completion_tokens,
         "task_timeout_sec": config.task_timeout_sec,
+        "keep_last_steps": config.keep_last_steps,
+        "task_codes": config.task_codes,
     },
     "token_statistics": session_tokens,
     "total_time_sec": round(total_time_sec, 1),

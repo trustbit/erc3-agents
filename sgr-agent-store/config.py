@@ -19,6 +19,12 @@ class AgentConfig(BaseModel):
     max_completion_tokens: int = 8000
     task_timeout_sec: int = 120
 
+    # History compression: keep full details for last N steps
+    keep_last_steps: int = 3
+
+    # Task filter: if empty, run all tasks; otherwise run only these spec_ids
+    task_codes: List[str] = []
+
     # System prompt template with {guidelines} placeholder
     system_prompt: str = """You are a business assistant helping customers of OnlineStore.
 

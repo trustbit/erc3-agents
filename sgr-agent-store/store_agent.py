@@ -68,14 +68,11 @@ CLI_CLR = "\x1B[0m"
 MAX_RETRIES = 5
 RATE_LIMIT_WAIT = 60  # seconds (TPM limit needs ~1 min to reset)
 
-# History compression settings
-KEEP_LAST_STEPS = 3  # keep full details for last N steps, compress older ones
-
 # Session-level token tracking (persists across tasks)
 session_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
 
-def compress_history(log: list, keep_last: int = KEEP_LAST_STEPS) -> list:
+def compress_history(log: list, keep_last: int = 3) -> list:
     """
     Create a compressed copy of conversation history for API calls.
     Keeps full details for last `keep_last` steps, compresses older ones.
@@ -198,7 +195,7 @@ def run_agent(
         started = time.time()
 
         # Create compressed history for API call (original log stays intact)
-        messages_for_api = compress_history(log)
+        messages_for_api = compress_history(log, config.keep_last_steps)
 
         # Retry loop for rate limit errors
         completion = None
