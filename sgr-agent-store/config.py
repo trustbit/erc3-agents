@@ -41,11 +41,12 @@ class AgentConfig(BaseModel):
 
 ## Available Tools
 
-### Combo tools (Combo_*)
-Aggregate multiple API calls.
 
 ### Low-level API tools (Req_*)
 Direct API operations. Use it for special occasions
+
+### Combo tools (other)
+Aggregate multiple API calls.
 
 ## Guidelines
 
@@ -56,12 +57,12 @@ Direct API operations. Use it for special occasions
         "If it is possible to solve task, but something goes wrong - find the best way to redo the problematic step"
         "If it is objectively impossible to solve the task in terms of products, amounts or coupons, report it through the TaskCompletion "
         "Follow your plan and execute the first step."
-        "First, check for suitable tools. Use Low-level API tools when Combo tools don't fit your needs.",
-        "If the solution requires to check combination of products - use Combo_Generate_Product_Combinations"
-        "If the task requires optimal bundle of products with coupon - use Combo_Find_Best_Combination_For_Products_And_Coupons."
+        "First, check for suitable tools.",
+        "If the solution requires to check combination of products - use Generate_Product_Combinations"
+        "If the task requires optimal bundle of products with coupon - use Find_Best_Combination_For_Products_And_Coupons."
         # "Combo tools return raw data — YOU decide what's \"best\" based on task requirements.",
         # "Always ensure that any proposed product combination is **fully valid**:\n  - it matches all required item quantities;\n  - it includes only the allowed item types defined by the task.",
-        # "To complete the purchase:\n  - compare the contents of the basket with the task requirements;\n  - call Combo_CheckoutBasket",
+        # "To complete the purchase:\n  - compare the contents of the basket with the task requirements;\n  - call CheckoutBasket",
         # "Clearly report when tasks are done.",
         # "You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.",
         # "Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.",

@@ -1,4 +1,52 @@
-# Combo Tools Design Principles for Agents
+# SGR Store Agent
+
+## Project Overview
+
+**ERC3** (Enterprise Reasoning Challenge 3) — benchmark platform for evaluating AI agents on business tasks.
+
+**Store benchmark** — simulates an online store where agent must complete shopping tasks: find products, apply coupons, optimize purchases, checkout.
+
+**SGR (Schema-Guided Reasoning)** — approach using OpenAI structured outputs to constrain agent responses to valid tool calls via Pydantic schemas.
+
+## Architecture
+
+```
+sgr-agent-store/
+├── main.py              # Entry point: starts session, iterates tasks
+├── store_agent.py       # Agent loop: LLM → parse → dispatch → log
+├── config.py            # AgentConfig: model, prompts, timeouts
+└── tools/
+    ├── __init__.py      # Exports all tools
+    ├── dtos.py          # Pydantic schemas (Combo_*, TaskCompletion, etc.)
+    └── wrappers.py      # Tool implementations
+```
+
+**Key flow:**
+1. `main.py` starts ERC3 session, gets tasks
+2. For each task: `run_agent()` in `store_agent.py`
+3. Agent loop: send history to LLM → get `NextStep` with tool call → dispatch → append result → repeat
+4. Exit on `TaskCompletion` with `completed=True` or timeout
+
+## Key Concepts
+
+| Concept | Description |
+|---------|-------------|
+| **NextStep** | Pydantic model that LLM must return: current_state, plan, task_completed, function (tool to call) |
+| **Combo tools** | High-level wrappers that aggregate multiple API calls |
+| **TaskCompletion** | Unified exit point with routing: solved/impossible/need_work |
+| **History compression** | Old tool results are truncated to save tokens |
+
+## Running
+
+```bash
+./run_session.sh          # Run full session (all tasks)
+./run_task.sh <spec_id>   # Run single task
+./del_compiled.sh         # Clear Python cache
+```
+
+---
+
+# Combo Tools Design Principles
 
 ## 1. Separation of Responsibilities
 
@@ -31,10 +79,9 @@ Combo_Action_Target_For_Parameters
 ```
 
 **Examples:**
-- `Combo_Test_Coupons_For_Item_Sets` — test coupons for item sets
-- `Combo_Find_Extra_Items_To_Maximize_Discount` — find extra items for max discount
-- `Combo_Test_Slots_For_Participants` — test time slots for participants
-- `Combo_Find_Room_For_Meeting_Options` — find room for meeting options
+- `Combo_Find_Best_Combination_For_Products_And_Coupons` — test coupons against product combinations
+- `Combo_List_All_Products` — fetch all products with pagination
+- `Combo_Generate_Product_Combinations` — generate valid product combos for target units
 
 ---
 
@@ -222,9 +269,19 @@ def combo_tool(api, primary_params, secondary_params) -> Resp_Combo:
 - Shell scripts `cd` into agent folder before running Python
 
 ### Session Management
-- Agent session log (`logs/session.log`) — do NOT monitor, analyze only AFTER session completes
+- Task logs are in `logs/tasks/*.log` — do NOT monitor, analyze only AFTER session completes
 - Process stdout/stderr — DO monitor to detect errors and take action
 - Do NOT analyze session until user explicitly requests it
 
 ### Syntax Checking
-- After syntax check via `python -m py_compile`, run `./del_compiled.sh` to clean up artifacts
+- After syntax check via `python -m py_compile`, run `./del_compiled.sh` (in project root) to clean up artifacts
+
+### Agent Configuration
+- Do NOT modify `system_prompt` or `system_prompt_guidelines` in `config.py`
+- If prompt content seems outdated, notify user — they will update it manually
+
+### TaskCompletion Tool
+Unified tool for completing tasks with three action types:
+- `TaskSolved` — basket ready, validates and performs checkout
+- `TaskImpossible` — task cannot be completed, reports failure
+- `NeedMoreWork` — more steps needed, returns to planning (max 3 retries)

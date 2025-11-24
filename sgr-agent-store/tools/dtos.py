@@ -16,7 +16,7 @@ class ErrorInfo(BaseModel):
     params: Optional[dict] = None        # parameters that caused the error
 
 
-class Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
+class Find_Best_Combination_For_Products_And_Coupons(BaseModel):
     """
     Test each coupon against each product combination.
 
@@ -45,8 +45,8 @@ class Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
     )
 
 
-class Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
-    """Response from Combo_Find_Best_Combination_For_Products_And_Coupons"""
+class Resp_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
+    """Response from Find_Best_Combination_For_Products_And_Coupons"""
     success: bool                                    # overall execution status
     results: Optional[List[Resp_ViewBasket]] = None  # array of basket states for each combination
     error_message: Optional[str] = None              # error message if failed
@@ -54,7 +54,7 @@ class Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(BaseModel):
 
 # --- Product search tools ---
 
-class Combo_Get_Product_Page_Limit(BaseModel):
+class Get_Product_Page_Limit(BaseModel):
     """
     Get the page limit for ListProducts API.
 
@@ -64,12 +64,12 @@ class Combo_Get_Product_Page_Limit(BaseModel):
     tool: Literal["get_page_limit"] = "get_page_limit"
 
 
-class Resp_Combo_Get_Product_Page_Limit(BaseModel):
-    """Response from Combo_Get_Product_Page_Limit"""
+class Resp_Get_Product_Page_Limit(BaseModel):
+    """Response from Get_Product_Page_Limit"""
     error_message: str = Field(..., description="Error message containing the page limit, e.g. 'page limit exceeded: 999 > 5'")
 
 
-class Combo_List_All_Products(BaseModel):
+class List_All_Products(BaseModel):
     """
     List ALL products from the store.
 
@@ -86,8 +86,8 @@ class Combo_List_All_Products(BaseModel):
     )
 
 
-class Resp_Combo_List_All_Products(BaseModel):
-    """Response from Combo_List_All_Products"""
+class Resp_List_All_Products(BaseModel):
+    """Response from List_All_Products"""
     success: bool
     products: Optional[List[ProductInfo]] = None
     error_message: Optional[str] = None
@@ -96,7 +96,7 @@ class Resp_Combo_List_All_Products(BaseModel):
 
 # --- Basket operations ---
 
-class Combo_EmptyBasket(BaseModel):
+class EmptyBasket(BaseModel):
     """
     Clear all items from the basket and remove any applied coupon.
 
@@ -105,8 +105,8 @@ class Combo_EmptyBasket(BaseModel):
     tool: Literal["empty_basket"] = "empty_basket"
 
 
-class Resp_Combo_EmptyBasket(BaseModel):
-    """Response from Combo_EmptyBasket"""
+class Resp_EmptyBasket(BaseModel):
+    """Response from EmptyBasket"""
     success: bool
     items_removed: int = 0  # number of item lines removed
     coupon_removed: bool = False  # whether a coupon was removed
@@ -118,7 +118,7 @@ class BasketAddLine(BaseModel):
     quantity: int
 
 
-class Combo_SetBasket(BaseModel):
+class SetBasket(BaseModel):
     """
     Set basket contents to specified products and coupon.
     Clears basket, adds all products, and applies coupon if provided.
@@ -133,8 +133,8 @@ class Combo_SetBasket(BaseModel):
     )
 
 
-class Resp_Combo_SetBasket(BaseModel):
-    """Response from Combo_SetBasket"""
+class Resp_SetBasket(BaseModel):
+    """Response from SetBasket"""
     success: bool
     basket: Optional[Resp_ViewBasket] = None  # actual basket state after setting
     error_message: Optional[str] = None
@@ -162,12 +162,12 @@ class ProductForCombination(BaseModel):
     )
 
 
-class Combo_Generate_Product_Combinations(BaseModel):
+class Generate_Product_Combinations(BaseModel):
     products_to_combine: List[ProductForCombination]
     total_units_target: int
 
 
-class Resp_Combo_Generate_Product_Combinations(BaseModel):
+class Resp_Generate_Product_Combinations(BaseModel):
     success: bool
     combinations: Optional[List[List[ProductLine]]] = None  # list of valid combinations
     error_message: Optional[str] = None

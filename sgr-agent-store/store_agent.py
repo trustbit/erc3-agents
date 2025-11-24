@@ -8,18 +8,18 @@ from openai import OpenAI, RateLimitError
 
 from config import AgentConfig, default_config
 from tools import (
-    Combo_Find_Best_Combination_For_Products_And_Coupons,
-    combo_find_best_combination_for_products_and_coupons,
-    Combo_Get_Product_Page_Limit,
-    combo_get_product_page_limit,
-    Combo_List_All_Products,
-    combo_list_all_products,
-    Combo_EmptyBasket,
-    combo_empty_basket,
-    Combo_SetBasket,
-    combo_set_basket,
-    Combo_Generate_Product_Combinations,
-    combo_generate_product_combinations,
+    Find_Best_Combination_For_Products_And_Coupons,
+    find_best_combination_for_products_and_coupons,
+    Get_Product_Page_Limit,
+    get_product_page_limit,
+    List_All_Products,
+    list_all_products,
+    EmptyBasket,
+    empty_basket,
+    SetBasket,
+    set_basket,
+    Generate_Product_Combinations,
+    generate_product_combinations,
     TaskCompletion,
     task_completion,
 )
@@ -38,12 +38,12 @@ class NextStep(BaseModel):
     # Routing to one of the tools to execute the first remaining step
     function: Union[
         # Combo tools (aggregate multiple API calls)
-        Combo_Find_Best_Combination_For_Products_And_Coupons,
-        Combo_Get_Product_Page_Limit,
-        Combo_List_All_Products,
-        Combo_EmptyBasket,
-        Combo_SetBasket,
-        Combo_Generate_Product_Combinations,
+        Find_Best_Combination_For_Products_And_Coupons,
+        Get_Product_Page_Limit,
+        List_All_Products,
+        EmptyBasket,
+        SetBasket,
+        Generate_Product_Combinations,
         # API tools (direct operations)
         # store.Req_ListProducts,
         store.Req_ViewBasket,
@@ -307,18 +307,18 @@ def run_agent(
                 continue
 
             # Handle Combo tools
-            if isinstance(job.function, Combo_Find_Best_Combination_For_Products_And_Coupons):
-                result = combo_find_best_combination_for_products_and_coupons(store_api, job.function)
-            elif isinstance(job.function, Combo_Get_Product_Page_Limit):
-                result = combo_get_product_page_limit(store_api, job.function)
-            elif isinstance(job.function, Combo_List_All_Products):
-                result = combo_list_all_products(store_api, job.function)
-            elif isinstance(job.function, Combo_EmptyBasket):
-                result = combo_empty_basket(store_api, job.function)
-            elif isinstance(job.function, Combo_SetBasket):
-                result = combo_set_basket(store_api, job.function)
-            elif isinstance(job.function, Combo_Generate_Product_Combinations):
-                result = combo_generate_product_combinations(job.function)
+            if isinstance(job.function, Find_Best_Combination_For_Products_And_Coupons):
+                result = find_best_combination_for_products_and_coupons(store_api, job.function)
+            elif isinstance(job.function, Get_Product_Page_Limit):
+                result = get_product_page_limit(store_api, job.function)
+            elif isinstance(job.function, List_All_Products):
+                result = list_all_products(store_api, job.function)
+            elif isinstance(job.function, EmptyBasket):
+                result = empty_basket(store_api, job.function)
+            elif isinstance(job.function, SetBasket):
+                result = set_basket(store_api, job.function)
+            elif isinstance(job.function, Generate_Product_Combinations):
+                result = generate_product_combinations(job.function)
             else:
                 # Regular API tools
                 result = store_api.dispatch(job.function)

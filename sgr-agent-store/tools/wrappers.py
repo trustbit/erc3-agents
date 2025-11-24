@@ -18,18 +18,18 @@ from erc3.store import (
 )
 
 from .dtos import (
-    Combo_Find_Best_Combination_For_Products_And_Coupons,
-    Resp_Combo_Find_Best_Combination_For_Products_And_Coupons,
-    Combo_Get_Product_Page_Limit,
-    Resp_Combo_Get_Product_Page_Limit,
-    Combo_List_All_Products,
-    Resp_Combo_List_All_Products,
-    Combo_EmptyBasket,
-    Resp_Combo_EmptyBasket,
-    Combo_SetBasket,
-    Resp_Combo_SetBasket,
-    Combo_Generate_Product_Combinations,
-    Resp_Combo_Generate_Product_Combinations,
+    Find_Best_Combination_For_Products_And_Coupons,
+    Resp_Find_Best_Combination_For_Products_And_Coupons,
+    Get_Product_Page_Limit,
+    Resp_Get_Product_Page_Limit,
+    List_All_Products,
+    Resp_List_All_Products,
+    EmptyBasket,
+    Resp_EmptyBasket,
+    SetBasket,
+    Resp_SetBasket,
+    Generate_Product_Combinations,
+    Resp_Generate_Product_Combinations,
     # Task completion
     TaskCompletion,
     Resp_TaskCompletion,
@@ -55,28 +55,28 @@ def clear_basket(api: StoreClient) -> tuple[int, bool]:
     return items_removed, coupon_removed
 
 
-def combo_empty_basket(
+def empty_basket(
     api: StoreClient,
-    req: Combo_EmptyBasket
-) -> Resp_Combo_EmptyBasket:
+    req: EmptyBasket
+) -> Resp_EmptyBasket:
     """
     Clear all items from the basket and remove any applied coupon.
     """
     try:
         items_removed, coupon_removed = clear_basket(api)
-        return Resp_Combo_EmptyBasket(
+        return Resp_EmptyBasket(
             success=True,
             items_removed=items_removed,
             coupon_removed=coupon_removed
         )
     except ApiException:
-        return Resp_Combo_EmptyBasket(success=False)
+        return Resp_EmptyBasket(success=False)
 
 
-def combo_set_basket(
+def set_basket(
     api: StoreClient,
-    req: Combo_SetBasket
-) -> Resp_Combo_SetBasket:
+    req: SetBasket
+) -> Resp_SetBasket:
     """
     Set basket contents to specified products and coupon.
     Clears basket, adds all products, and applies coupon if provided.
@@ -93,20 +93,20 @@ def combo_set_basket(
         if req.coupon:
             result = api.dispatch(Req_ApplyCoupon(coupon=req.coupon))
             if hasattr(result, 'error') and result.error:
-                return Resp_Combo_SetBasket(success=False, error_message=result.error)
+                return Resp_SetBasket(success=False, error_message=result.error)
 
         # 4. Return actual basket state
         basket = api.dispatch(Req_ViewBasket())
-        return Resp_Combo_SetBasket(success=True, basket=basket)
+        return Resp_SetBasket(success=True, basket=basket)
 
     except ApiException as e:
-        return Resp_Combo_SetBasket(success=False, error_message=e.api_error.error)
+        return Resp_SetBasket(success=False, error_message=e.api_error.error)
 
 
-def combo_find_best_combination_for_products_and_coupons(
+def find_best_combination_for_products_and_coupons(
     api: StoreClient,
-    req: Combo_Find_Best_Combination_For_Products_And_Coupons
-) -> Resp_Combo_Find_Best_Combination_For_Products_And_Coupons:
+    req: Find_Best_Combination_For_Products_And_Coupons
+) -> Resp_Find_Best_Combination_For_Products_And_Coupons:
     """
     Test each coupon against each item set.
 
@@ -116,7 +116,7 @@ def combo_find_best_combination_for_products_and_coupons(
     """
     # Self-control validation
     if not req.all_combinations_included:
-        return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
+        return Resp_Find_Best_Combination_For_Products_And_Coupons(
             success=False,
             error_message="You indicated that not all product combinations are included. Please add ALL possible combinations before calling this tool."
         )
@@ -129,7 +129,7 @@ def combo_find_best_combination_for_products_and_coupons(
             try:
                 clear_basket(api)
             except ApiException as e:
-                return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
+                return Resp_Find_Best_Combination_For_Products_And_Coupons(
                     success=False,
                     error_message=f"clear_basket failed: {e.api_error.error}"
                 )
@@ -189,16 +189,16 @@ def combo_find_best_combination_for_products_and_coupons(
             max_discount = max(b.discount for b in results)
             results = [b for b in results if b.discount == max_discount]
 
-    return Resp_Combo_Find_Best_Combination_For_Products_And_Coupons(
+    return Resp_Find_Best_Combination_For_Products_And_Coupons(
         success=True,
         results=results
     )
 
 
-def combo_get_product_page_limit(
+def get_product_page_limit(
     api: StoreClient,
-    req: Combo_Get_Product_Page_Limit
-) -> Resp_Combo_Get_Product_Page_Limit:
+    req: Get_Product_Page_Limit
+) -> Resp_Get_Product_Page_Limit:
     """
     Discover the page limit by requesting more items than allowed.
     Returns the error message containing the actual limit.
@@ -206,15 +206,15 @@ def combo_get_product_page_limit(
     try:
         api.dispatch(Req_ListProducts(offset=0, limit=100))
         # If no error, return a message indicating no limit
-        return Resp_Combo_Get_Product_Page_Limit(error_message="no limit detected")
+        return Resp_Get_Product_Page_Limit(error_message="no limit detected")
     except ApiException as e:
-        return Resp_Combo_Get_Product_Page_Limit(error_message=e.api_error.error)
+        return Resp_Get_Product_Page_Limit(error_message=e.api_error.error)
 
 
-def combo_list_all_products(
+def list_all_products(
     api: StoreClient,
-    req: Combo_List_All_Products
-) -> Resp_Combo_List_All_Products:
+    req: List_All_Products
+) -> Resp_List_All_Products:
     """
     List all products from the store.
     Handles pagination automatically.
@@ -235,7 +235,7 @@ def combo_list_all_products(
             offset = resp.next_offset
 
         except ApiException as e:
-            return Resp_Combo_List_All_Products(
+            return Resp_List_All_Products(
                 success=False,
                 error_message=f"Failed to list products: {e.api_error.error}"
             )
@@ -248,16 +248,16 @@ def combo_list_all_products(
             hint = f"Product '{req.product_name_exact}' not found. Call this method without product_name_exact to get the full product list."
         products = filtered
 
-    return Resp_Combo_List_All_Products(
+    return Resp_List_All_Products(
         success=True,
         products=products,
         hint=hint
     )
 
 
-def combo_generate_product_combinations(
-    req: Combo_Generate_Product_Combinations
-) -> Resp_Combo_Generate_Product_Combinations:
+def generate_product_combinations(
+    req: Generate_Product_Combinations
+) -> Resp_Generate_Product_Combinations:
     """
     Generate all valid product combinations that sum to exact target units.
 
@@ -267,13 +267,13 @@ def combo_generate_product_combinations(
     Each product quantity is limited by available_quantity.
     """
     if not req.products_to_combine:
-        return Resp_Combo_Generate_Product_Combinations(
+        return Resp_Generate_Product_Combinations(
             success=False,
             error_message="No products provided"
         )
 
     if req.total_units_target <= 0:
-        return Resp_Combo_Generate_Product_Combinations(
+        return Resp_Generate_Product_Combinations(
             success=False,
             error_message="total_units_target must be positive"
         )
@@ -305,13 +305,13 @@ def combo_generate_product_combinations(
     backtrack(0, req.total_units_target, [])
 
     if not combinations:
-        return Resp_Combo_Generate_Product_Combinations(
+        return Resp_Generate_Product_Combinations(
             success=True,
             combinations=[],
             error_message=f"No valid combinations found for target {req.total_units_target} units"
         )
 
-    return Resp_Combo_Generate_Product_Combinations(
+    return Resp_Generate_Product_Combinations(
         success=True,
         combinations=combinations
     )
