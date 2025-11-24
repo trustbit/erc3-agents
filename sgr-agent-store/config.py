@@ -59,7 +59,8 @@ Aggregate multiple API calls.
         "If it is objectively impossible to solve the task in terms of products, amounts or coupons, report it through the TaskCompletion "
         "Follow your plan and execute the first step."
         "First, check for suitable tools.",
-        "If the solution requires to check combination of products - use Generate_Product_Combinations"
+        "Use List_All_Products do get products; This tool is usually able to detect page_size **automatically**."
+        "If the solution requires to check combination of products - use Generate_Product_Combinations."
         "If the task requires optimal bundle of products with coupon - use Find_Best_Combination_For_Products_And_Coupons."
         # "Combo tools return raw data — YOU decide what's \"best\" based on task requirements.",
         # "Always ensure that any proposed product combination is **fully valid**:\n  - it matches all required item quantities;\n  - it includes only the allowed item types defined by the task.",

@@ -38,12 +38,13 @@ class NextStep(BaseModel):
     # Routing to one of the tools to execute the first remaining step
     function: Union[
         # Combo tools (aggregate multiple API calls)
-        Find_Best_Combination_For_Products_And_Coupons,
-        Get_Product_Page_Limit,
         List_All_Products,
-        EmptyBasket,
-        SetBasket,
         Generate_Product_Combinations,
+        Find_Best_Combination_For_Products_And_Coupons,
+        SetBasket,
+        Get_Product_Page_Limit,
+        EmptyBasket,
+
         # API tools (direct operations)
         # store.Req_ListProducts,
         store.Req_ViewBasket,
