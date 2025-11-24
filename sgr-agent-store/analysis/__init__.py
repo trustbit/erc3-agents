@@ -1,3 +1,3 @@
 """Session history analysis tools"""
 
-from .stats import load_sessions, get_sessions
+from .stats import load_sessions, get_sessions, get_session_logs

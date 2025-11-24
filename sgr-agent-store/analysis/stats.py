@@ -70,3 +70,33 @@ def get_sessions(
         return sessions[index]
 
     raise TypeError(f"index must be int, slice, or None, got {type(index).__name__}")
+
+
+def get_session_logs(
+    index: Union[int, slice, None] = None,
+    path: str = None
+) -> List[Dict[str, Any]]:
+    """
+    Extract session_id, commit, and session_log from sessions.
+
+    Args:
+        index: Python-like index (int, slice, or None for all).
+        path: Path to sessions history file.
+
+    Returns:
+        List of dicts with keys: session_id, commit, session_log
+    """
+    sessions = get_sessions(index, path)
+
+    # Normalize to list
+    if isinstance(sessions, dict):
+        sessions = [sessions]
+
+    return [
+        {
+            "session_id": s.get("session_id"),
+            "commit": s.get("commit"),
+            "session_log": s.get("session_log"),
+        }
+        for s in sessions
+    ]
