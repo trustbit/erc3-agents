@@ -18,7 +18,7 @@ class AgentConfig(BaseModel):
     # model_id: str = "gpt-4.1-mini"
     dumb_model_id: Optional[str] = None  # Simple model for basic Q&A (defaults to model_id if not set)
     max_completion_tokens: int = 8000
-    task_timeout_sec: int = 120
+    task_timeout_sec: int = 300
 
     # History compression: keep full details for last N steps
     keep_last_steps: int = 3
