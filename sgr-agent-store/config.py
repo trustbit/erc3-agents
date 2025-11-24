@@ -16,6 +16,7 @@ class AgentConfig(BaseModel):
     # Model settings
     model_id: str = "gpt-4o"
     # model_id: str = "gpt-4.1-mini"
+    dumb_model_id: Optional[str] = None  # Simple model for basic Q&A (defaults to model_id if not set)
     max_completion_tokens: int = 8000
     task_timeout_sec: int = 120
 

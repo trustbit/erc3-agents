@@ -3,6 +3,7 @@
 from typing import List
 
 from erc3 import ApiException
+from dumb_model import dumb_completion, Number_Answer
 from erc3.store import (
     StoreClient,
     ProductLine,
@@ -219,11 +220,13 @@ def list_all_products(
     List all products from the store.
     Handles pagination automatically.
     If page_limit is not provided, uses 100 which will trigger an error revealing the actual limit.
+    On page limit error, uses dumb_model to determine correct limit and retries once.
     """
     page_limit = req.page_limit if req.page_limit is not None else 100
 
     products: List[ProductInfo] = []
     offset = 0
+    dumb_model_used = False
 
     while True:
         try:
@@ -235,10 +238,31 @@ def list_all_products(
             offset = resp.next_offset
 
         except ApiException as e:
-            return Resp_List_All_Products(
-                success=False,
-                error_message=f"Failed to list products: {e.api_error.error}"
-            )
+            # If page limit error and haven't used dumb_model yet, try to fix it
+            if "limit" in e.api_error.error and not dumb_model_used:
+                try:
+                    dumb_model_used = True
+                    answer = dumb_completion(
+                        f"I tried to set page_limit=100 but got a server error: {e.api_error.error}. What page_limit does the server expect?",
+                        Number_Answer
+                    )
+                    page_limit = answer.answer
+                    # Reset for retry with new limit
+                    products = []
+                    offset = 0
+                    continue
+                except Exception:
+                    # dumb_model failed, return error to agent
+                    return Resp_List_All_Products(
+                        success=False,
+                        error_message=f"Failed to list products: {e.api_error.error}"
+                    )
+            else:
+                # Either not a page limit error, or already tried dumb_model
+                return Resp_List_All_Products(
+                    success=False,
+                    error_message=f"Failed to list products: {e.api_error.error}"
+                )
 
     # Filter by exact product name if provided
     hint = None
