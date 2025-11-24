@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Union, Optional
 
 from config import default_config
+from .parser import parse_session_log
 
 
 def load_sessions(path: str = None) -> List[Dict[str, Any]]:
@@ -92,11 +93,12 @@ def get_session_logs(
     if isinstance(sessions, dict):
         sessions = [sessions]
 
-    return [
-        {
+    result = []
+    for s in sessions:
+        raw_log = s.get("session_log", "")
+        result.append({
             "session_id": s.get("session_id"),
             "commit": s.get("commit"),
-            "session_log": s.get("session_log"),
-        }
-        for s in sessions
-    ]
+            "session_log": parse_session_log(raw_log) if raw_log else [],
+        })
+    return result
