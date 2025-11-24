@@ -36,12 +36,25 @@ def dumb_completion(question: str, response_format):
     Returns:
         Parsed response object with .answer attribute
     """
+    # Import here to avoid circular dependency
+    from store_agent import write_session_log
+
     model_id = default_config.dumb_model_id or default_config.model_id
-    completion = client.beta.chat.completions.parse(
-        model=model_id,
-        messages=[
-            {"role": "user", "content": question}
-        ],
-        response_format=response_format,
-    )
-    return completion.choices[0].message.parsed
+
+    write_session_log(default_config.session_log, f"[dumb_model] Question: {question}\n")
+
+    try:
+        completion = client.beta.chat.completions.parse(
+            model=model_id,
+            messages=[
+                {"role": "user", "content": question}
+            ],
+            response_format=response_format,
+        )
+        result = completion.choices[0].message.parsed
+        write_session_log(default_config.session_log, f"[dumb_model] Answer: {result.answer}\n\n")
+        return result
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        write_session_log(default_config.session_log, f"[dumb_model] Error: {error_msg}\n\n")
+        raise
