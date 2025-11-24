@@ -110,18 +110,26 @@ session_record = {
     "session_log": session_log_content,
 }
 
-# Append to sessions history file
+# Append to sessions history file (with retry on concurrent access)
 SESSIONS_HISTORY_FILE = Path(config.sessions_history)
-history = []
-if SESSIONS_HISTORY_FILE.exists():
-    with open(SESSIONS_HISTORY_FILE, "r") as f:
-        try:
-            history = json.load(f)
-        except json.JSONDecodeError:
-            history = []
+for attempt in range(3):
+    try:
+        history = []
+        if SESSIONS_HISTORY_FILE.exists():
+            with open(SESSIONS_HISTORY_FILE, "r") as f:
+                try:
+                    history = json.load(f)
+                except json.JSONDecodeError:
+                    history = []
 
-history.append(session_record)
+        history.append(session_record)
 
-with open(SESSIONS_HISTORY_FILE, "w") as f:
-    json.dump(history, f, indent=2, ensure_ascii=False)
+        with open(SESSIONS_HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+        break  # Success
+    except (IOError, OSError) as e:
+        if attempt < 2:
+            time.sleep(1)
+        else:
+            print(f"Warning: Could not save session history after 3 attempts: {e}")
 
