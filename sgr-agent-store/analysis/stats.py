@@ -99,6 +99,6 @@ def get_session_logs(
         result.append({
             "session_id": s.get("session_id"),
             "commit": s.get("commit"),
-            "session_log": parse_session_log(raw_log) if raw_log else [],
+            "session_log": parse_session_log(raw_log) if raw_log else {"tasks": []},
         })
     return result
