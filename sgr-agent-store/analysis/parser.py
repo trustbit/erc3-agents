@@ -68,7 +68,10 @@ def parse_session_log(log_text: str) -> List[Dict[str, Any]]:
                 "task_id": task_match.group(1),
                 "task_code": task_match.group(2),
                 "task_text": "",
-                "steps": []
+                "steps": [],
+                "score": None,
+                "pass": None,
+                "stats": {"duration": None, "tokens": {"prompt": None, "completion": None}}
             }
             i += 1
             continue
@@ -92,13 +95,31 @@ def parse_session_log(log_text: str) -> List[Dict[str, Any]]:
                 "task_completed": False,
                 "function": "",
                 "args": {},
-                "result": {}
+                "result": {},
+                "stats": {"duration": None, "tokens": {"prompt": None, "completion": None}}
             }
             i += 1
             continue
 
         # Parse step fields
         if current_step is not None:
+            # time: "time: 1.7s elapsed, step took 1.7s"
+            time_match = re.match(r'^time:.*step took ([\d.]+)s', line)
+            if time_match:
+                current_step["stats"]["duration"] = float(time_match.group(1))
+                i += 1
+                continue
+
+            # tokens: "tokens: step=2062 (completion=62), task=2062, session=2062"
+            tokens_match = re.match(r'^tokens:\s+step=(\d+)\s+\(completion=(\d+)\)', line)
+            if tokens_match:
+                step_total = int(tokens_match.group(1))
+                completion = int(tokens_match.group(2))
+                current_step["stats"]["tokens"]["completion"] = completion
+                current_step["stats"]["tokens"]["prompt"] = step_total - completion
+                i += 1
+                continue
+
             # current_state:
             if line.startswith("current_state:"):
                 current_step["current_state"] = line[14:].strip()
@@ -145,6 +166,30 @@ def parse_session_log(log_text: str) -> List[Dict[str, Any]]:
                     current_step["result"] = json.loads(result_str)
                 except json.JSONDecodeError:
                     current_step["result"] = {"raw": result_str}
+                i += 1
+                continue
+
+        # Parse task-level fields (after steps)
+        if current_task is not None:
+            # SCORE: 1.0
+            score_match = re.match(r'^SCORE:\s+([\d.]+)', line)
+            if score_match:
+                current_task["score"] = float(score_match.group(1))
+                i += 1
+                continue
+
+            # PASS: ...
+            if line.startswith("PASS:"):
+                current_task["pass"] = line[5:].strip()
+                i += 1
+                continue
+
+            # Task stats: 17.9s, 20057 tokens (prompt: 19212, completion: 845)
+            stats_match = re.match(r'^Task stats:\s+([\d.]+)s,\s+\d+\s+tokens\s+\(prompt:\s+(\d+),\s+completion:\s+(\d+)\)', line)
+            if stats_match:
+                current_task["stats"]["duration"] = float(stats_match.group(1))
+                current_task["stats"]["tokens"]["prompt"] = int(stats_match.group(2))
+                current_task["stats"]["tokens"]["completion"] = int(stats_match.group(3))
                 i += 1
                 continue
 
