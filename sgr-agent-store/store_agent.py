@@ -69,6 +69,14 @@ RATE_LIMIT_WAIT = 60  # seconds (TPM limit needs ~1 min to reset)
 session_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
 
+def write_session_log(log_file: str, *messages: str):
+    """Write messages to session log file. Accept multiple string arguments."""
+    if log_file:
+        with open(log_file, "a") as f:
+            for msg in messages:
+                f.write(msg)
+
+
 def compress_history(log: list, keep_last: int = 3) -> list:
     """
     Create a compressed copy of conversation history for API calls.
@@ -161,12 +169,13 @@ def run_agent(
     system_prompt = config.get_system_prompt()
 
     # Write task header to log file
-    if log_file:
-        with open(log_file, "a") as f:
-            f.write(f"\n{'='*60}\n")
-            f.write(f"TASK: {task.task_id} ({task.spec_id})\n")
-            f.write(f"TEXT: {task.task_text}\n")
-            f.write(f"{'='*60}\n\n")
+    write_session_log(
+        log_file,
+        f"\n{'='*60}\n",
+        f"TASK: {task.task_id} ({task.spec_id})\n",
+        f"TEXT: {task.task_text}\n",
+        f"{'='*60}\n\n"
+    )
 
     # log will contain conversation context for the agent within task
     log = [
@@ -184,9 +193,7 @@ def run_agent(
         # Check timeout
         if time.time() - task_started > config.task_timeout_sec:
             print(f"TIMEOUT: task exceeded {config.task_timeout_sec}s limit")
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"TIMEOUT: exceeded {config.task_timeout_sec}s limit\n\n")
+            write_session_log(log_file, f"TIMEOUT: exceeded {config.task_timeout_sec}s limit\n\n")
             break
         step = f"step_{i + 1}"
         print(f"Next {step}... ", end="")
@@ -209,18 +216,17 @@ def run_agent(
                 break  # Success, exit retry loop
             except RateLimitError as e:
                 print(f"\n{CLI_YELLOW}RATE_LIMIT{CLI_CLR}: waiting {RATE_LIMIT_WAIT}s (attempt {attempt+1}/{MAX_RETRIES})")
-                if log_file:
-                    with open(log_file, "a") as f:
-                        f.write(f"--- {step} RATE_LIMIT (attempt {attempt+1}/{MAX_RETRIES}) ---\n\n")
+                write_session_log(log_file, f"--- {step} RATE_LIMIT (attempt {attempt+1}/{MAX_RETRIES}) ---\n\n")
                 time.sleep(RATE_LIMIT_WAIT)
 
         # Check if all retries exhausted
         if completion is None:
             print(f"{CLI_RED}RATE_LIMIT_EXHAUSTED{CLI_CLR}: Max retries ({MAX_RETRIES}) exceeded")
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"--- {step} RATE_LIMIT_EXHAUSTED ---\n")
-                    f.write(f"Max retries ({MAX_RETRIES}) exceeded, skipping task\n\n")
+            write_session_log(
+                log_file,
+                f"--- {step} RATE_LIMIT_EXHAUSTED ---\n",
+                f"Max retries ({MAX_RETRIES}) exceeded, skipping task\n\n"
+            )
             break  # Exit the step loop, move to next task
 
         step_duration = time.time() - started
@@ -251,15 +257,17 @@ def run_agent(
 
         # Log agent's reasoning to file
         if log_file and job:
-            with open(log_file, "a") as f:
-                f.write(f"--- {step} ---\n")
-                f.write(f"time: {elapsed_sec:.1f}s elapsed, step took {step_duration:.1f}s\n")
-                f.write(f"tokens: step={step_tokens['total']} (completion={step_tokens['completion']}), task={task_tokens['total']}, session={session_tokens['total']}\n")
-                f.write(f"current_state: {job.current_state}\n")
-                f.write(f"plan: {job.plan_remaining_steps_brief}\n")
-                f.write(f"task_completed: {job.task_completed}\n")
-                f.write(f"function: {job.function.__class__.__name__}\n")
-                f.write(f"  args: {job.function.model_dump_json()}\n")
+            write_session_log(
+                log_file,
+                f"--- {step} ---\n",
+                f"time: {elapsed_sec:.1f}s elapsed, step took {step_duration:.1f}s\n",
+                f"tokens: step={step_tokens['total']} (completion={step_tokens['completion']}), task={task_tokens['total']}, session={session_tokens['total']}\n",
+                f"current_state: {job.current_state}\n",
+                f"plan: {job.plan_remaining_steps_brief}\n",
+                f"task_completed: {job.task_completed}\n",
+                f"function: {job.function.__class__.__name__}\n",
+                f"  args: {job.function.model_dump_json()}\n"
+            )
 
         # print next step for debugging
         print(job.plan_remaining_steps_brief[0], f"\n  {job.function}")
@@ -285,9 +293,7 @@ def run_agent(
                 result = task_completion(store_api, job.function, log)
                 txt = result.model_dump_json(exclude_none=True, exclude_unset=True)
                 print(f"{CLI_GREEN}OUT{CLI_CLR}: {txt}")
-                if log_file:
-                    with open(log_file, "a") as f:
-                        f.write(f"  result: {txt}\n\n")
+                write_session_log(log_file, f"  result: {txt}\n\n")
                 log.append({"role": "tool", "content": txt, "tool_call_id": step})
 
                 # Check if agent finished work
@@ -297,11 +303,12 @@ def run_agent(
                     action_kind = job.function.action.kind  # solved or impossible
                     error_note = f" ({result.error_message})" if result.error_message else ""
                     print(f"[blue]agent finished:{action_kind}{error_note}[/blue]")
-                    if log_file:
-                        with open(log_file, "a") as f:
-                            f.write(f"FINISHED: {action_kind}{error_note}\n")
-                            f.write(f"Task stats: {task_duration:.1f}s, {task_tokens['total']} tokens (prompt: {task_tokens['prompt']}, completion: {task_tokens['completion']})\n")
-                            f.write(f"Session stats: {session_tokens['total']} tokens total\n\n")
+                    write_session_log(
+                        log_file,
+                        f"FINISHED: {action_kind}{error_note}\n",
+                        f"Task stats: {task_duration:.1f}s, {task_tokens['total']} tokens (prompt: {task_tokens['prompt']}, completion: {task_tokens['completion']})\n",
+                        f"Session stats: {session_tokens['total']} tokens total\n\n"
+                    )
                     break
                 # completed=False: task returned for rework, continue to next step
                 continue
@@ -324,21 +331,15 @@ def run_agent(
                 result = store_api.dispatch(job.function)
             txt = result.model_dump_json(exclude_none=True, exclude_unset=True)
             print(f"{CLI_GREEN}OUT{CLI_CLR}: {txt}")
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"  result: {txt}\n\n")
+            write_session_log(log_file, f"  result: {txt}\n\n")
         except ApiException as e:
             txt = e.detail
             print(f"{CLI_RED}ERR: {e.api_error.error}{CLI_CLR}")
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"  ERROR: {e.api_error.error}\n\n")
+            write_session_log(log_file, f"  ERROR: {e.api_error.error}\n\n")
         except Exception as e:
             txt = f'{{"error": "{str(e)}"}}'
             print(f"{CLI_RED}ERR: {str(e)}{CLI_CLR}")
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"  ERROR: {str(e)}\n\n")
+            write_session_log(log_file, f"  ERROR: {str(e)}\n\n")
 
         # and now we add results back to the convesation history, so that agent
         # we'll be able to act on the results in the next reasoning step.

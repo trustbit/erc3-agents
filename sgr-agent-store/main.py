@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from store_agent import run_agent, session_tokens
+from store_agent import run_agent, session_tokens, write_session_log
 from config import default_config
 from erc3 import ERC3
 
@@ -80,9 +80,7 @@ for task in status.tasks:
         task_scores.append(score)
         log_event(f"Task completed: {task.spec_id} | Score: {score}")
         # Write score to log file
-        with open(LOG_FILE, "a") as f:
-            f.write(f"SCORE: {score}\n")
-            f.write(f"{result.eval.logs}\n\n")
+        write_session_log(LOG_FILE, f"SCORE: {score}\n", f"{result.eval.logs}\n\n")
 
 core.submit_session(res.session_id)
 log_event(f"Session completed: {res.session_id} | Score: {sum(task_scores)/len(task_scores):.1%}")
