@@ -51,25 +51,25 @@ Direct API operations. Use it for special occasions
 
 {guidelines}
 """
-
-    # Guidelines as list of strings (will be numbered automatically)
     system_prompt_guidelines: List[str] = [
-        "Basic purchase scenario: Find required products; Send them to basket; optionally Apply coupon; If everything is OK: [Checkout; Final check; ReportTaskCompletion]."
-        "If it is impossible to solve task:  **DO NOT Checkout**, Final check, ReportTaskCompletion."
-        "If it is possible to solve task, but something going wrong - redo the problematic step with the correct parameters. "
-        "**Always** follow your plan and execute the first step."
-        "If the task requires optimal bundle of products with coupon - use Combo_Find_Best_Coupon_For_Products."
-        "First, check for suitable Combo tool. Use Low-level API tools when Combo tools don't fit your needs.",
-        "**Every time**, use CheckList_Before_TaskCompletion before ReportTaskCompletion."
+        "Basic purchase scenario: Find required products; Send them to basket; optionally Apply coupon; Compare basket and error messages with the task; If EVERYTHING meets the task: TaskCompletion."
+        "If it is possible to solve task, but something goes wrong - find the best way to redo the problematic step"
+        "If it is objectively impossible to solve the task in terms of products, amounts or coupons, report it through the TaskCompletion "
+        "Follow your plan and execute the first step."
+        "First, check for suitable tools. Use Low-level API tools when Combo tools don't fit your needs.",
+        "If the solution requires to check combination of products - use Combo_Generate_Product_Combinations"
+        "If the task requires optimal bundle of products with coupon - use Combo_Find_Best_Combination_For_Products_And_Coupons."
         # "Combo tools return raw data — YOU decide what's \"best\" based on task requirements.",
         # "Always ensure that any proposed product combination is **fully valid**:\n  - it matches all required item quantities;\n  - it includes only the allowed item types defined by the task.",
         # "To complete the purchase:\n  - compare the contents of the basket with the task requirements;\n  - call Combo_CheckoutBasket",
         # "Clearly report when tasks are done.",
         # "You can apply coupon codes to get discounts. Use ViewBasket to see current discount and total.",
-        "Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.",
+        # "Only one coupon can be applied at a time. Apply a new coupon to replace the current one, or remove it explicitly.",
         # "If ListProducts returns non-zero \"NextOffset\", it means there are more products available.",
         # "Before each step, evaluate whether the task goal achieved? What remains to do?",
     ]
+
+    # Guidelines as list of strings (will be numbered automatically)
 
     def get_system_prompt(self) -> str:
         """Build system prompt by replacing {guidelines} with numbered guidelines"""

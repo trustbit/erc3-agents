@@ -28,12 +28,14 @@ from .dtos import (
     Resp_Combo_EmptyBasket,
     Combo_SetBasket,
     Resp_Combo_SetBasket,
-    Combo_CheckoutBasket,
-    Resp_Combo_CheckoutBasket,
-    CheckList_Before_TaskCompletion,
-    Resp_CheckList_Before_TaskCompletion,
     Combo_Generate_Product_Combinations,
     Resp_Combo_Generate_Product_Combinations,
+    # Task completion
+    TaskCompletion,
+    Resp_TaskCompletion,
+    TaskSolved,
+    TaskImpossible,
+    NeedMoreWork,
 )
 
 
@@ -253,107 +255,6 @@ def combo_list_all_products(
     )
 
 
-def checklist_before_task_completion(
-    req: CheckList_Before_TaskCompletion
-) -> Resp_CheckList_Before_TaskCompletion:
-    """
-    Validate that agent has properly attempted the task before completing.
-
-    Logic:
-    - If task has no solution AND agent attempted it -> allowed to complete (as "failed")
-    - If task has solution AND checkout was done -> allowed to complete (as "completed")
-    - If task has solution BUT no checkout -> NOT allowed, must do checkout first
-    - If agent didn't attempt at all -> NOT allowed, must try first
-    """
-
-    # Case 1: Agent didn't even try
-    if not req.did_you_attempt_to_solve_the_task:
-        return Resp_CheckList_Before_TaskCompletion(
-            allowed_to_complete=False,
-            message="You must attempt to solve the task first. Search for products, check availability, test coupons if needed."
-        )
-
-    # Case 2: Task has no solution (impossible to complete)
-    if not req.does_this_task_have_solution:
-        return Resp_CheckList_Before_TaskCompletion(
-            allowed_to_complete=True,
-            message="Task cannot be completed (no solution). You may report as 'failed' with explanation."
-        )
-
-    # Case 3: Task has solution but checkout not done
-    if not req.was_checkout_done:
-        return Resp_CheckList_Before_TaskCompletion(
-            allowed_to_complete=False,
-            message="Task has a solution but you haven't completed the purchase. Add items to basket, apply coupon if needed, and call Combo_CheckoutBasket."
-        )
-
-    # Case 4: All good - task has solution and checkout was done
-    return Resp_CheckList_Before_TaskCompletion(
-        allowed_to_complete=True,
-        message="Checkout completed. You may report the task as 'completed'."
-    )
-
-
-def combo_checkout_basket(
-    api: StoreClient,
-    req: Combo_CheckoutBasket
-) -> Resp_Combo_CheckoutBasket:
-    """
-    Validate basket contents against task requirements, then checkout if valid.
-
-    Validation rules based on self-control fields:
-    - is_required_items_purchased must be True
-    - is_coupon_condition_violated must be False
-    - is_additional_condition_violated must be False
-    """
-    # Check if task has no solution - block checkout
-    if not req.does_this_task_have_solution:
-        return Resp_Combo_CheckoutBasket(
-            success=False,
-            error_message="Task has no solution. Do NOT checkout. Go to CheckList_Before_TaskCompletion, then ReportTaskCompletion."
-        )
-
-    errors = []
-    tc = req.task_conditions
-
-    # Self-control validation: required items purchased
-    if not req.is_required_items_purchased:
-        errors.append("Required items not purchased: is_required_items_purchased=False")
-
-    # Self-control validation: coupon conditions
-    if req.is_coupon_condition_violated:
-        errors.append(
-            f"Coupon condition violated: mentioned_coupons='{tc.mentioned_coupons}', "
-            f"applied_coupon='{req.applied_coupon}'"
-        )
-
-    # Self-control validation: additional conditions
-    if req.is_additional_condition_violated:
-        errors.append(
-            f"Additional condition violated: '{tc.other_conditions}'"
-        )
-
-    # If validation failed, return error
-    if errors:
-        return Resp_Combo_CheckoutBasket(
-            success=False,
-            error_message=" | ".join(errors)
-        )
-
-    # Validation passed - perform actual checkout
-    try:
-        result = api.dispatch(Req_CheckoutBasket())
-        return Resp_Combo_CheckoutBasket(
-            success=True,
-            checkout_result=result
-        )
-    except ApiException as e:
-        return Resp_Combo_CheckoutBasket(
-            success=False,
-            error_message=f"Checkout failed: {e.api_error.error}"
-        )
-
-
 def combo_generate_product_combinations(
     req: Combo_Generate_Product_Combinations
 ) -> Resp_Combo_Generate_Product_Combinations:
@@ -365,7 +266,7 @@ def combo_generate_product_combinations(
 
     Each product quantity is limited by available_quantity.
     """
-    if not req.products:
+    if not req.products_to_combine:
         return Resp_Combo_Generate_Product_Combinations(
             success=False,
             error_message="No products provided"
@@ -386,10 +287,10 @@ def combo_generate_product_combinations(
             combinations.append(current.copy())
             return
 
-        if remaining < 0 or index >= len(req.products):
+        if remaining < 0 or index >= len(req.products_to_combine):
             return
 
-        product = req.products[index]
+        product = req.products_to_combine[index]
         units = product.units_in_single_sku
         max_qty = min(product.available_quantity, remaining // units) if units > 0 else 0
 
@@ -414,3 +315,118 @@ def combo_generate_product_combinations(
         success=True,
         combinations=combinations
     )
+
+
+def task_completion(
+    api: StoreClient,
+    req: TaskCompletion,
+    history: list
+) -> Resp_TaskCompletion:
+    """
+    Unified task completion with routing.
+
+    Handles three branches:
+    - solved: validate and checkout
+    - impossible: report failure
+    - need_work: check retry count, force failure if ≥3
+
+    Args:
+        api: StoreClient instance
+        req: TaskCompletion request
+        history: conversation history (for counting need_work retries)
+    """
+
+    # Step 1: Check if agent attempted the task
+    if not req.did_you_attempt_to_solve_the_task:
+        return Resp_TaskCompletion(
+            completed=False,
+            error_message="You must attempt to solve the task first. Prepare a plan.",
+        )
+
+    action = req.action
+
+    # Branch: Task is impossible
+    if isinstance(action, TaskImpossible):
+        return Resp_TaskCompletion(completed=True)
+
+    # Branch: Need more work
+    if isinstance(action, NeedMoreWork):
+        # Count previous need_work calls in history
+        need_work_count = _count_need_work_in_history(history)
+
+        if need_work_count >= 2:  # This is the 3rd call
+            return Resp_TaskCompletion(
+                completed=True,
+                error_message=f"Exceeded 'NeedMoreWork' retry limit.",
+            )
+
+        return Resp_TaskCompletion(
+            completed=False,
+            error_message=f"Keep your plan",
+        )
+
+    # Branch: Task solved - validate and checkout
+    if isinstance(action, TaskSolved):
+        # Consistency check: task_solution_exists_in_principle should be True
+        if not req.task_solution_exists_in_principle:
+            return Resp_TaskCompletion(
+                completed=False,
+                error_message="Inconsistent: you marked task as 'solved' but set task_solution_exists_in_principle=False. Double-check yourself",
+            )
+
+        # Validate checkout conditions
+        errors = []
+        tc = action.task_conditions
+
+        if not action.are_all_required_items_purchased_with_correct_quantity:
+            errors.append("Required items not purchased")
+
+        if action.is_coupon_requirement_violated:
+            errors.append(f"Coupon condition violated: task mentions '{tc.coupon_requirements}', applied '{action.applied_coupons}'")
+
+        if action.is_other_requirement_violated:
+            errors.append(f"Additional condition violated: '{tc.other_requirements}'")
+
+        if errors:
+            error_msg = " | ".join(errors)
+            return Resp_TaskCompletion(
+                completed=False,
+                error_message=f"Validation failed: {error_msg}. Fix issues or mark as impossible.",
+            )
+
+        # Validation passed - perform checkout
+        try:
+            checkout_result = api.dispatch(Req_CheckoutBasket())
+            return Resp_TaskCompletion(
+                completed=True,
+            )
+        except ApiException as e:
+            error_msg = e.api_error.error
+            return Resp_TaskCompletion(
+                completed=False,
+                error_message=f"Checkout failed: {error_msg}. Fix if business logic error, or mark as impossible.",
+            )
+
+    # Should not reach here
+    return Resp_TaskCompletion(
+        completed=False,
+        error_message="Unknown action type",
+    )
+
+
+def _count_need_work_in_history(history: list) -> int:
+    """Count how many times TaskCompletion with need_work was called."""
+    import json
+    count = 0
+    for msg in history:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            for tc in msg["tool_calls"]:
+                if tc.get("function", {}).get("name") == "TaskCompletion":
+                    try:
+                        args = json.loads(tc["function"].get("arguments", "{}"))
+                        action = args.get("action", {})
+                        if action.get("kind") == "need_work":
+                            count += 1
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+    return count

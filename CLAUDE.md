@@ -224,6 +224,7 @@ def combo_tool(api, primary_params, secondary_params) -> Resp_Combo:
 ### Session Management
 - Agent session log (`logs/session.log`) — do NOT monitor, analyze only AFTER session completes
 - Process stdout/stderr — DO monitor to detect errors and take action
+- Do NOT analyze session until user explicitly requests it
 
 ### Syntax Checking
 - After syntax check via `python -m py_compile`, run `./del_compiled.sh` to clean up artifacts

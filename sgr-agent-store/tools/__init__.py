@@ -13,13 +13,15 @@ from .dtos import (
     Combo_SetBasket,
     Resp_Combo_SetBasket,
     TaskConditions,
-    Combo_CheckoutBasket,
-    Resp_Combo_CheckoutBasket,
-    CheckList_Before_TaskCompletion,
-    Resp_CheckList_Before_TaskCompletion,
     ProductForCombination,
     Combo_Generate_Product_Combinations,
     Resp_Combo_Generate_Product_Combinations,
+    # Task completion
+    TaskCompletion,
+    Resp_TaskCompletion,
+    TaskSolved,
+    TaskImpossible,
+    NeedMoreWork,
 )
 from .wrappers import (
     combo_find_best_combination_for_products_and_coupons,
@@ -27,9 +29,8 @@ from .wrappers import (
     combo_list_all_products,
     combo_empty_basket,
     combo_set_basket,
-    combo_checkout_basket,
-    checklist_before_task_completion,
     combo_generate_product_combinations,
+    task_completion,
 )
 
 __all__ = [
@@ -45,19 +46,21 @@ __all__ = [
     "Combo_SetBasket",
     "Resp_Combo_SetBasket",
     "TaskConditions",
-    "Combo_CheckoutBasket",
-    "Resp_Combo_CheckoutBasket",
-    "CheckList_Before_TaskCompletion",
-    "Resp_CheckList_Before_TaskCompletion",
     "ProductForCombination",
     "Combo_Generate_Product_Combinations",
     "Resp_Combo_Generate_Product_Combinations",
+    # Task completion
+    "TaskCompletion",
+    "Resp_TaskCompletion",
+    "TaskSolved",
+    "TaskImpossible",
+    "NeedMoreWork",
+    "task_completion",
+    # Wrapper functions
     "combo_find_best_combination_for_products_and_coupons",
     "combo_get_product_page_limit",
     "combo_list_all_products",
     "combo_empty_basket",
     "combo_set_basket",
-    "combo_checkout_basket",
-    "checklist_before_task_completion",
     "combo_generate_product_combinations",
 ]

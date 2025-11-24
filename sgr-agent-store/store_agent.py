@@ -18,23 +18,16 @@ from tools import (
     combo_empty_basket,
     Combo_SetBasket,
     combo_set_basket,
-    Combo_CheckoutBasket,
-    combo_checkout_basket,
-    CheckList_Before_TaskCompletion,
-    checklist_before_task_completion,
     Combo_Generate_Product_Combinations,
     combo_generate_product_combinations,
+    TaskCompletion,
+    task_completion,
 )
 
 client = OpenAI(
     timeout=60.0,      # timeout per request (seconds)
     max_retries=3,     # auto-retry on timeout/5xx errors
 )
-
-class ReportTaskCompletion(BaseModel):
-    tool: Literal["report_completion"]
-    completed_steps_laconic: List[str]
-    code: Literal["completed", "failed"]
 
 class NextStep(BaseModel):
     current_state: str
@@ -50,7 +43,6 @@ class NextStep(BaseModel):
         Combo_List_All_Products,
         Combo_EmptyBasket,
         Combo_SetBasket,
-        Combo_CheckoutBasket,
         Combo_Generate_Product_Combinations,
         # API tools (direct operations)
         # store.Req_ListProducts,
@@ -60,8 +52,7 @@ class NextStep(BaseModel):
         # store.Req_AddProductToBasket,
         # store.Req_RemoveItemFromBasket,
         # Task completion
-        CheckList_Before_TaskCompletion,
-        ReportTaskCompletion,
+        TaskCompletion,
     ] = Field(..., description="execute first remaining step")
 
 
@@ -270,50 +261,7 @@ def run_agent(
                 f.write(f"function: {job.function.__class__.__name__}\n")
                 f.write(f"  args: {job.function.model_dump_json()}\n")
 
-        # if SGR wants to finish, check if checklist was called in previous step
-        if isinstance(job.function, ReportTaskCompletion):
-            # Check if previous step was CheckList_Before_TaskCompletion
-            prev_assistant = log[-2] if len(log) >= 2 else None
-            was_checklist = (
-                prev_assistant and
-                prev_assistant.get("tool_calls") and
-                prev_assistant["tool_calls"][0]["function"]["name"] == "CheckList_Before_TaskCompletion"
-            )
-            if not was_checklist:
-                # Reject completion - must call CheckList_Before_TaskCompletion first
-                txt = '{"error": "You must call CheckList_Before_TaskCompletion before ReportTaskCompletion"}'
-                print(f"{CLI_RED}BLOCKED{CLI_CLR}: Must call CheckList_Before_TaskCompletion first")
-                if log_file:
-                    with open(log_file, "a") as f:
-                        f.write(f"  BLOCKED: Must call CheckList_Before_TaskCompletion first\n\n")
-                # Add assistant message with tool_call first (like other tools)
-                log.append({
-                    "role": "assistant",
-                    "content": job.plan_remaining_steps_brief[0],
-                    "tool_calls": [{
-                        "type": "function",
-                        "id": step,
-                        "function": {
-                            "name": job.function.__class__.__name__,
-                            "arguments": job.function.model_dump_json(),
-                        }}]
-                })
-                log.append({"role": "tool", "content": txt, "tool_call_id": step})
-                continue
-
-            print(f"[blue]agent {job.function.code}[/blue]. Summary:")
-            for s in job.function.completed_steps_laconic:
-                print(f"- {s}")
-            task_duration = time.time() - task_started
-            if log_file:
-                with open(log_file, "a") as f:
-                    f.write(f"COMPLETED: {job.function.code}\n")
-                    f.write(f"Summary: {job.function.completed_steps_laconic}\n")
-                    f.write(f"Task stats: {task_duration:.1f}s, {task_tokens['total']} tokens (prompt: {task_tokens['prompt']}, completion: {task_tokens['completion']})\n")
-                    f.write(f"Session stats: {session_tokens['total']} tokens total\n\n")
-            break
-
-        # print next sep for debugging
+        # print next step for debugging
         print(job.plan_remaining_steps_brief[0], f"\n  {job.function}")
 
         # Let's add tool request to conversation history as if OpenAI asked for it.
@@ -332,10 +280,34 @@ def run_agent(
 
         # now execute the tool by dispatching command to our handler
         try:
-            # Handle Combo tools and checklist separately
-            if isinstance(job.function, CheckList_Before_TaskCompletion):
-                result = checklist_before_task_completion(job.function)
-            elif isinstance(job.function, Combo_Find_Best_Combination_For_Products_And_Coupons):
+            # Handle TaskCompletion with special exit logic
+            if isinstance(job.function, TaskCompletion):
+                result = task_completion(store_api, job.function, log)
+                txt = result.model_dump_json(exclude_none=True, exclude_unset=True)
+                print(f"{CLI_GREEN}OUT{CLI_CLR}: {txt}")
+                if log_file:
+                    with open(log_file, "a") as f:
+                        f.write(f"  result: {txt}\n\n")
+                log.append({"role": "tool", "content": txt, "tool_call_id": step})
+
+                # Check if agent finished work
+                if result.completed:
+                    # Agent finished - log the action type (solved/impossible)
+                    task_duration = time.time() - task_started
+                    action_kind = job.function.action.kind  # solved or impossible
+                    error_note = f" ({result.error_message})" if result.error_message else ""
+                    print(f"[blue]agent finished:{action_kind}{error_note}[/blue]")
+                    if log_file:
+                        with open(log_file, "a") as f:
+                            f.write(f"FINISHED: {action_kind}{error_note}\n")
+                            f.write(f"Task stats: {task_duration:.1f}s, {task_tokens['total']} tokens (prompt: {task_tokens['prompt']}, completion: {task_tokens['completion']})\n")
+                            f.write(f"Session stats: {session_tokens['total']} tokens total\n\n")
+                    break
+                # completed=False: task returned for rework, continue to next step
+                continue
+
+            # Handle Combo tools
+            if isinstance(job.function, Combo_Find_Best_Combination_For_Products_And_Coupons):
                 result = combo_find_best_combination_for_products_and_coupons(store_api, job.function)
             elif isinstance(job.function, Combo_Get_Product_Page_Limit):
                 result = combo_get_product_page_limit(store_api, job.function)
@@ -345,8 +317,6 @@ def run_agent(
                 result = combo_empty_basket(store_api, job.function)
             elif isinstance(job.function, Combo_SetBasket):
                 result = combo_set_basket(store_api, job.function)
-            elif isinstance(job.function, Combo_CheckoutBasket):
-                result = combo_checkout_basket(store_api, job.function)
             elif isinstance(job.function, Combo_Generate_Product_Combinations):
                 result = combo_generate_product_combinations(job.function)
             else:

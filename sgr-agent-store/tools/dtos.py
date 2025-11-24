@@ -1,6 +1,6 @@
 """Pydantic schemas for Combo tools"""
 
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 from annotated_types import MaxLen
@@ -140,125 +140,84 @@ class Resp_Combo_SetBasket(BaseModel):
     error_message: Optional[str] = None
 
 
-# --- Checkout with self-control ---
+# --- Task requirements (used in TaskCompletion) ---
 
 class TaskConditions(BaseModel):
-    """Task requirements breakdown for self-control validation"""
-    quantity_required: Optional[int] = Field(
-        None,
-        description="Exact quantity required by task, if specified"
-    )
-    mentioned_coupons: Optional[str] = Field(
-        None,
-        description="Coupons mentioned/offered in the task description"
-    )
-    other_conditions: Optional[str] = Field(
-        None,
-        description="all other conditions mentioned in the task except of products, quantity, coupon"
-    )
-
-
-class Combo_CheckoutBasket(BaseModel):
-    """
-    Checkout basket with self-control validation.
-    Validates that basket contents match task requirements before purchase.
-    """
-    # Task conditions (first position - agent must analyze the task)
-    task_conditions: TaskConditions = Field(
-        ...,
-        description="Breakdown of task requirements: products, quantity, coupons, other conditions"
-    )
-
-    # Self-control fields (agent fills based on current basket state)
-    does_this_task_have_solution: bool = Field(
-        ...,
-        description="Can this task be completed? If False, do NOT checkout - go to CheckList_Before_TaskCompletion instead."
-    )
-    is_required_items_purchased: bool = Field(
-        ...,
-        description="Are the required items purchased in the correct quantity?"
-    )
-    applied_coupon: Optional[str] = Field(
-        None,
-        description="Which coupon is currently applied to the basket?"
-    )
-    is_coupon_condition_violated: bool = Field(
-        ...,
-        description="Is the coupon application condition violated?"
-    )
-    is_additional_condition_violated: bool = Field(
-        ...,
-        description="Are any additional task conditions violated?"
-    )
-
-
-class Resp_Combo_CheckoutBasket(BaseModel):
-    """Response from Combo_CheckoutBasket"""
-    success: bool
-    checkout_result: Optional[Resp_CheckoutBasket] = None  # actual checkout response if success
-    error_message: Optional[str] = None  # validation or checkout error message if failed
-
-
-# --- Task completion self-control ---
-
-class CheckList_Before_TaskCompletion(BaseModel):
-    """
-    Self-control checklist before completing a task.
-    """
-    did_you_attempt_to_solve_the_task: bool = Field(
-        ...,
-        description="Did you try to solve the task?"
-    )
-    does_this_task_have_solution: bool = Field(
-        ...,
-        description="Can this task be completed?"
-    )
-    was_checkout_done: bool = Field(
-        ...,
-        description="Did you call Combo_CheckoutBasket to complete the purchase?"
-    )
-
-
-class Resp_CheckList_Before_TaskCompletion(BaseModel):
-    """Response from CheckList_Before_TaskCompletion validation"""
-    allowed_to_complete: bool
-    message: str
+    """Task requirements breakdown"""
+    what_to_buy: str
+    quantity_requirements: Optional[int]
+    coupon_requirements: Optional[str]
+    other_requirements: Optional[str]
 
 
 # --- Product combination generator ---
 
 class ProductForCombination(BaseModel):
-    """Product info for combination generation"""
-    sku: str = Field(..., description="Product SKU")
-    available_quantity: int = Field(..., description="Available stock quantity")
+    """Product data for combination generation"""
+    sku: str
+    available_quantity: int
     units_in_single_sku: int = Field(
         ...,
-        description="Number of individual units included in a single SKU, inferred from the product name (e.g., '6-pack' = 6, '12-pack' = 12)"
+        description="inferred from the product name (e.g., '6-pack' = 6)"
     )
 
 
 class Combo_Generate_Product_Combinations(BaseModel):
-    """
-    Generate all valid product combinations that sum to exact target units.
-
-    Use this when task requires buying exact quantity (e.g., "buy 24 sodas")
-    and products come in different pack sizes (6pk, 12pk, 24pk).
-
-    Returns all combinations where sum of (quantity × units_in_single_sku) = total_units_target.
-    Respects available_quantity limits.
-    """
-    products: List[ProductForCombination] = Field(
-        ...,
-        description="List of products with SKU, available quantity, and units per SKU"
-    )
-    total_units_target: int = Field(
-        ...,
-        description="The total number of individual units desired in the cart"
-    )
+    products_to_combine: List[ProductForCombination]
+    total_units_target: int
 
 
 class Resp_Combo_Generate_Product_Combinations(BaseModel):
-    """Response from Combo_Generate_Product_Combinations"""
     success: bool
     combinations: Optional[List[List[ProductLine]]] = None  # list of valid combinations
     error_message: Optional[str] = None
+
+
+# --- New unified task completion with routing ---
+
+class TaskSolved(BaseModel):
+    kind: Literal["solved"] = "solved"
+
+    # Checkout validation (from Combo_CheckoutBasket)
+    task_conditions: TaskConditions
+    are_all_required_items_purchased_with_correct_quantity: bool
+    applied_coupons: Optional[str]
+    is_coupon_requirement_violated: bool
+    is_other_requirement_violated: bool
+    solution_summary: str
+
+
+class TaskImpossible(BaseModel):
+    kind: Literal["impossible"] = "impossible"
+    reason: str
+
+
+class NeedMoreWork(BaseModel):
+    kind: Literal["need_work"] = "need_work"
+    what_remains_to_do: str
+
+
+class TaskCompletion(BaseModel):
+    """
+    Final step: validate solution and complete task.
+
+    Choose ONE action based on task status:
+    - impossible: task cannot be done → report failure
+    - solved: basket is ready → checkout and report success
+    - need_work: more steps needed → return to planning
+    """
+    # Self-reflection
+    did_you_attempt_to_solve_the_task: bool
+    task_solution_exists_in_principle: bool
+
+    # Routing: choose one path
+    action: Union[TaskImpossible, TaskSolved, NeedMoreWork]
+
+
+class Resp_TaskCompletion(BaseModel):
+    completed: bool  # True if task is finished (success or failure)
+    error_message: Optional[str] = None
+    # success: Optional[bool] = None  # True=solved, False=failed, None=need_work
+    # checkout_result: Optional[Resp_CheckoutBasket] = None
+    # message: str
+    # should_report: bool = False  # Signal to agent loop to exit
