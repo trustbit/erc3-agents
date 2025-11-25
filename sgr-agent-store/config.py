@@ -27,7 +27,8 @@ class AgentConfig(BaseModel):
     keep_last_steps: int = 3
 
     # Task filter: if empty, run all tasks; otherwise run only these spec_ids
-    task_codes: List[str] = ["pet_store_best_coupon"]
+    task_codes: List[str] = []
+    # task_codes: List[str] = ["pet_store_best_coupon"]
 
     # Log paths (relative to agent folder, or absolute)
     session_log: str = "logs/session.log"
