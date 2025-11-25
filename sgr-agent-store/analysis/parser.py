@@ -58,6 +58,7 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
 
     Returns:
         Dict with:
+        - prompt_hashes: Dict with body and guidelines hashes (or None if not found)
         - tasks: List of task dicts, each containing:
             - id: str
             - code: str
@@ -77,6 +78,7 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
     tasks = []
     current_task = None
     current_step = None
+    prompt_hashes = None
 
     lines = log_text.split('\n')
     i = 0
@@ -86,6 +88,16 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
 
         # Skip ignored lines
         if _should_ignore_line(line):
+            i += 1
+            continue
+
+        # Parse prompt_hashes (at beginning of log)
+        if line.startswith("prompt_hashes:"):
+            hashes_json = line[14:].strip()
+            try:
+                prompt_hashes = json.loads(hashes_json)
+            except json.JSONDecodeError:
+                prompt_hashes = None
             i += 1
             continue
 
@@ -104,10 +116,10 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
             current_task = {
                 "id": task_match.group(1),
                 "code": task_match.group(2),
-                "text": "n/a",
-                "score": "n/a",
-                "pass": "n/a",
-                "stats": {"duration": "n/a", "tokens": {"prompt": "n/a", "completion": "n/a"}},
+                "text": None,
+                "score": None,
+                "pass": None,
+                "stats": {"duration": None, "tokens": {"prompt": None, "completion": None}},
                 "steps": [],
             }
             i += 1
@@ -129,13 +141,13 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
                 current_task["steps"].append(current_step)
 
             current_step = {
-                "stats": {"duration": "n/a", "tokens": {"prompt": "n/a", "completion": "n/a"}},
-                "current_state": "n/a",
-                "plan": "n/a",
-                "task_completed": "n/a",
-                "function": "n/a",
-                "args": "n/a",
-                "result": "n/a",
+                "stats": {"duration": None, "tokens": {"prompt": None, "completion": None}},
+                "current_state": None,
+                "plan": None,
+                "task_completed": None,
+                "function": None,
+                "args": None,
+                "result": None,
             }
             i += 1
             continue
@@ -242,7 +254,7 @@ def parse_session_log(log_text: str, compact: bool = False) -> Dict[str, Any]:
             current_task["steps"].append(current_step)
         tasks.append(current_task)
 
-    return {"tasks": tasks}
+    return {"prompt_hashes": prompt_hashes, "tasks": tasks}
 
 
 def get_task_summary(task: Dict[str, Any]) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ from erc3 import store, ApiException, TaskInfo, ERC3
 from openai import OpenAI, RateLimitError
 
 from config import AgentConfig, default_config
+from analysis.hashes import compose_guidelines
 from tools import (
     Find_Best_Combination_For_Products_And_Coupons,
     find_best_combination_for_products_and_coupons,
@@ -71,11 +72,15 @@ session_tokens = {"prompt": 0, "completion": 0, "total": 0}
 
 
 def write_session_log(log_file: str, *messages: str):
-    """Write messages to session log file. Accept multiple string arguments."""
+    """
+    Write messages to session log file with concurrent access protection.
+
+    Uses retry logic to handle concurrent writes from multiple processes.
+    """
     if log_file:
-        with open(log_file, "a") as f:
-            for msg in messages:
-                f.write(msg)
+        from common import safe_file_append
+        content = "".join(messages)
+        safe_file_append(log_file, content)
 
 
 def compress_history(log: list, keep_last: int = 3) -> list:
@@ -167,7 +172,8 @@ def run_agent(
         config = default_config
 
     store_api = api.get_store_client(task)
-    system_prompt = config.get_system_prompt()
+    guidelines_text = compose_guidelines(config.system_prompt_guidelines)
+    system_prompt = config.system_prompt.format(guidelines=guidelines_text)
 
     # Write task header to log file
     write_session_log(

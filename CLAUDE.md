@@ -285,3 +285,39 @@ Unified tool for completing tasks with three action types:
 - `TaskSolved` — basket ready, validates and performs checkout
 - `TaskImpossible` — task cannot be completed, reports failure
 - `NeedMoreWork` — more steps needed, returns to planning (max 3 retries)
+
+---
+
+## Code Organization Rules
+
+### config.py — Data Only
+**NEVER define functions in `config.py`**
+- `config.py` contains ONLY the `AgentConfig` class with data fields
+- All logic functions must be placed in appropriate modules (e.g., `analysis/hashes.py`, `common/`)
+- Purpose: keep configuration as pure data to memorize and version easily
+
+### analysis/ — Optional Module
+**Operations that MAINTAIN analysis data MUST check `config.analysis` flag**
+- The `analysis/` directory contains session analysis tools (parsers, stats, hash tracking)
+- Main agent code must work independently when `analysis=False`
+- **Logging to session files is always enabled** (prompt hashes, etc.) — this is part of session record
+- **Maintaining auxiliary data structures** (e.g., `hashes.dict`) requires `config.analysis=True`
+- Example:
+  ```python
+  # Always log to session
+  prompt_hashes = compute_prompt_hashes(...)
+  write_session_log(LOG_FILE, f"prompt_hashes:{json.dumps(prompt_hashes)}\n\n")
+
+  # Maintain hash dictionary only if analysis enabled
+  if config.analysis:
+      record_prompt_hashes(prompt_hashes, ...)
+  ```
+- Purpose: session logs contain all data; analysis structures can be rebuilt from logs if needed
+
+### common/ — Shared Utilities
+**General-purpose tools MUST be placed in `common/` directory**
+- `common/` contains utilities that can be reused across multiple agents
+- Examples: file operations, retry logic, concurrent access safety
+- Do NOT place agent-specific logic in `common/`
+- Import from `common/` instead of duplicating code across agents
+- Purpose: when multiple agents exist at the same level, they share common utilities

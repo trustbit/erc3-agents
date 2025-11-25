@@ -98,10 +98,12 @@ def get_session_logs(
     result = []
     for s in sessions:
         raw_log = s.get("session_log", "")
+        parsed = parse_session_log(raw_log, compact=compact) if raw_log else {"prompt_hashes": None, "tasks": []}
         result.append({
             "session_id": s.get("session_id"),
             "commit": s.get("commit"),
-            "session_log": parse_session_log(raw_log, compact=compact) if raw_log else {"tasks": []},
+            "prompt_hashes": parsed.get("prompt_hashes"),
+            "session_log": parsed,
         })
     return result
 
@@ -156,7 +158,8 @@ def get_task_across_sessions(
             result.append({
                 "session_id": s.get("session_id"),
                 "commit": s.get("commit"),
-                "session_log": {"tasks": matching_tasks},
+                "prompt_hashes": parsed.get("prompt_hashes"),
+                "session_log": {"prompt_hashes": parsed.get("prompt_hashes"), "tasks": matching_tasks},
             })
 
     return result

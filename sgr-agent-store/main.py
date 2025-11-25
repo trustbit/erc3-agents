@@ -9,6 +9,7 @@ load_dotenv()
 
 from store_agent import run_agent, session_tokens, write_session_log
 from config import default_config
+from analysis.hashes import compute_prompt_hashes, record_prompt_hashes
 from erc3 import ERC3
 
 def get_git_commit() -> str:
@@ -54,6 +55,14 @@ with open(LOG_FILE, "w") as f:
     f.write(f"Model: {config.model_id}\n")
     f.write(f"URL: https://erc.timetoact-group.at/sessions/{res.session_id}\n")
     f.write("="*60 + "\n\n")
+
+# Compute and log prompt hashes
+prompt_hashes = compute_prompt_hashes(config.system_prompt, config.system_prompt_guidelines)
+write_session_log(LOG_FILE, f"prompt_hashes:{json.dumps(prompt_hashes)}\n\n")
+
+# Maintain hash dictionary (only if analysis enabled)
+if config.analysis:
+    record_prompt_hashes(prompt_hashes, config.system_prompt, config.system_prompt_guidelines)
 
 status = core.session_status(res.session_id)
 
@@ -111,25 +120,15 @@ session_record = {
 }
 
 # Append to sessions history file (with retry on concurrent access)
+from common import safe_read_modify_write_json
+
 SESSIONS_HISTORY_FILE = Path(config.sessions_history)
-for attempt in range(3):
-    try:
+
+def append_session(history):
+    if history is None:
         history = []
-        if SESSIONS_HISTORY_FILE.exists():
-            with open(SESSIONS_HISTORY_FILE, "r") as f:
-                try:
-                    history = json.load(f)
-                except json.JSONDecodeError:
-                    history = []
+    history.append(session_record)
+    return history
 
-        history.append(session_record)
-
-        with open(SESSIONS_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
-        break  # Success
-    except (IOError, OSError) as e:
-        if attempt < 2:
-            time.sleep(1)
-        else:
-            print(f"Warning: Could not save session history after 3 attempts: {e}")
+safe_read_modify_write_json(SESSIONS_HISTORY_FILE, append_session, default=[])
 
