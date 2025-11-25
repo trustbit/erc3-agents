@@ -1,0 +1,24 @@
+{
+  "id": "1.1",
+  "name": "Config Loader with auto-conversion",
+  "branch_name": "task-1.1-config-loader",
+  "deliverables": [
+    "agent-optimization/config/__init__.py",
+    "agent-optimization/config/loader.py",
+    "agent-optimization/config/converter.py",
+    "tests/test_config_loader.py"
+  ],
+  "acceptance_criteria": [
+    "Loads JSON config when path provided via --config argument",
+    "Auto-converts config.py to JSON when no --config provided",
+    "Converted configs are saved to experiments/generated/ for reuse",
+    "All unit tests pass with >80% coverage",
+    "Handle missing files gracefully with clear error messages"
+  ],
+  "technical_notes": "Use Pydantic for validation. Preserve all fields from current AgentConfig.",
+  "estimated_hours": 4,
+  "test_before_complete": true,
+  "escalation_rules": "See handoff/opus_to_sonnet/escalation_rules.md",
+  "created": "2025-11-25T19:09:31.529613",
+  "status": "ready"
+}

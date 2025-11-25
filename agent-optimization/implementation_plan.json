@@ -1,0 +1,269 @@
+{
+  "phase_1_foundation": {
+    "name": "Foundation - Core Infrastructure",
+    "status": "in_progress",
+    "estimated_hours": 30,
+    "tasks": [
+      {
+        "id": "1.1",
+        "name": "Config Loader with auto-conversion",
+        "status": "pending",
+        "dependencies": [],
+        "branch_name": "task-1.1-config-loader",
+        "deliverables": [
+          "agent-optimization/config/__init__.py",
+          "agent-optimization/config/loader.py",
+          "agent-optimization/config/converter.py",
+          "tests/test_config_loader.py"
+        ],
+        "acceptance_criteria": [
+          "Loads JSON config when path provided via --config argument",
+          "Auto-converts config.py to JSON when no --config provided",
+          "Converted configs are saved to experiments/generated/ for reuse",
+          "All unit tests pass with >80% coverage",
+          "Handle missing files gracefully with clear error messages"
+        ],
+        "technical_notes": "Use Pydantic for validation. Preserve all fields from current AgentConfig.",
+        "estimated_hours": 4
+      },
+      {
+        "id": "1.2",
+        "name": "Config Schema and Validation",
+        "status": "pending",
+        "dependencies": [
+          "1.1"
+        ],
+        "branch_name": "task-1.2-config-schema",
+        "deliverables": [
+          "agent-optimization/config/schema.py",
+          "agent-optimization/config/validator.py",
+          "tests/test_config_validation.py",
+          "examples/config_baseline.json",
+          "examples/config_with_parent.json"
+        ],
+        "acceptance_criteria": [
+          "Pydantic schema ExperimentConfig matches current AgentConfig fields",
+          "Single-level inheritance works (child inherits from parent, overrides specific fields)",
+          "Validation catches invalid field types and missing required fields",
+          "Example configs demonstrate inheritance and override",
+          "Tests cover validation edge cases"
+        ],
+        "technical_notes": "Parent config loaded recursively but only one level deep. Use dict merge for inheritance.",
+        "estimated_hours": 3
+      },
+      {
+        "id": "1.3",
+        "name": "CLI Integration for experiments",
+        "status": "pending",
+        "dependencies": [
+          "1.2"
+        ],
+        "branch_name": "task-1.3-cli-integration",
+        "deliverables": [
+          "agent-optimization/run_experiment.py",
+          "agent-optimization/cli/__init__.py",
+          "agent-optimization/cli/arguments.py",
+          "tests/test_cli.py"
+        ],
+        "acceptance_criteria": [
+          "Script accepts --config path/to/config.json argument",
+          "Script accepts --override key=value for runtime parameter changes",
+          "Falls back to config.py conversion when no --config provided",
+          "Integrates with sgr-agent-store to run sessions",
+          "Clear help text with usage examples"
+        ],
+        "technical_notes": "Use argparse. Override syntax: --override model_id=gpt-4o-mini --override task_codes=['task1','task2']",
+        "estimated_hours": 3
+      },
+      {
+        "id": "1.4",
+        "name": "Enhanced Session Parser with Statistics",
+        "status": "pending",
+        "dependencies": [],
+        "branch_name": "task-1.4-enhanced-parser",
+        "deliverables": [
+          "agent-optimization/analysis/enhanced_parser.py",
+          "agent-optimization/analysis/statistics.py",
+          "tests/test_enhanced_parser.py",
+          "tests/test_statistics.py"
+        ],
+        "acceptance_criteria": [
+          "Parser adds 'statistics' section to parsed session",
+          "Calculates: success_rate, avg_tokens, avg_time, median_tokens, percentiles (25/75/95)",
+          "Calculates trajectory metrics: early_termination_rate, avg_steps_per_task",
+          "Handles missing or malformed data gracefully",
+          "Batch processing for multiple sessions"
+        ],
+        "technical_notes": "Build on existing parse_session_log from sgr-agent-store/analysis. Import and extend, don't duplicate.",
+        "estimated_hours": 5
+      },
+      {
+        "id": "1.5",
+        "name": "SPRT Implementation",
+        "status": "pending",
+        "dependencies": [],
+        "branch_name": "task-1.5-sprt",
+        "deliverables": [
+          "agent-optimization/analysis/sprt.py",
+          "tests/test_sprt.py",
+          "examples/sprt_simulation.py"
+        ],
+        "acceptance_criteria": [
+          "SPRTAnalyzer class with configurable alpha, beta, min_effect_size",
+          "update() method processes new observations",
+          "decision() returns 'continue', 'accept_h1', or 'accept_h0'",
+          "Works with success_rate metric (binary outcomes)",
+          "Example demonstrates early stopping on synthetic data"
+        ],
+        "technical_notes": "Use log-likelihood ratio. Handle edge cases (divide by zero). Include docstring with math explanation.",
+        "estimated_hours": 3
+      },
+      {
+        "id": "1.6",
+        "name": "Experiment Runner with SPRT",
+        "status": "pending",
+        "dependencies": [
+          "1.3",
+          "1.4",
+          "1.5"
+        ],
+        "branch_name": "task-1.6-experiment-runner",
+        "deliverables": [
+          "agent-optimization/experiment_runner.py",
+          "agent-optimization/analysis/comparator.py",
+          "tests/test_experiment_runner.py",
+          "examples/run_ab_test.sh"
+        ],
+        "acceptance_criteria": [
+          "Runs control and test configs alternately",
+          "Integrates SPRT for early stopping",
+          "Logs progress to experiments/active/",
+          "Saves results to experiments/completed/ when done",
+          "Handles interruption gracefully (can resume)"
+        ],
+        "technical_notes": "Use subprocess to run sgr-agent-store. Parse results in real-time. Save state after each session pair.",
+        "estimated_hours": 4
+      },
+      {
+        "id": "1.7",
+        "name": "Integration Testing and Documentation",
+        "status": "pending",
+        "dependencies": [
+          "1.6"
+        ],
+        "branch_name": "task-1.7-integration",
+        "deliverables": [
+          "tests/test_integration.py",
+          "docs/QUICKSTART.md",
+          "docs/API.md",
+          "examples/full_experiment.py"
+        ],
+        "acceptance_criteria": [
+          "End-to-end test: config \u2192 run \u2192 parse \u2192 SPRT \u2192 result",
+          "Documentation covers all user-facing functions",
+          "QUICKSTART has working example from scratch",
+          "All Phase 1 components work together"
+        ],
+        "technical_notes": "Use pytest fixtures for test data. Documentation in Markdown with code examples.",
+        "estimated_hours": 3
+      },
+      {
+        "id": "1.8",
+        "name": "Filter System Implementation",
+        "status": "pending",
+        "dependencies": [
+          "1.4"
+        ],
+        "branch_name": "task-1.8-filters",
+        "deliverables": [
+          "agent-optimization/analysis/core/filters.py",
+          "tests/test_filters.py",
+          "examples/filter_usage.py"
+        ],
+        "acceptance_criteria": [
+          "SessionFilter supports index slicing, key-value match, complex conditions",
+          "FilterChain allows sequential filter application",
+          "Supports nested key access with dot notation",
+          "Task-level filtering works",
+          "Performance acceptable for 1000+ sessions"
+        ],
+        "technical_notes": "Already partially implemented in agent-optimization/analysis/core/filters.py - complete and test it.",
+        "estimated_hours": 3
+      }
+    ]
+  },
+  "phase_2_automation": {
+    "name": "Automation - Streamlined Workflow",
+    "status": "planned",
+    "estimated_hours": 14,
+    "tasks": [
+      {
+        "id": "2.1",
+        "name": "Automated SPRT Monitor",
+        "status": "planned",
+        "dependencies": [
+          "1.6"
+        ],
+        "deliverables": [],
+        "acceptance_criteria": [
+          "Real-time monitoring of running experiments",
+          "Automatic session termination on SPRT decision",
+          "Progress visualization"
+        ],
+        "estimated_hours": 8
+      },
+      {
+        "id": "2.2",
+        "name": "Parallel Experiment Support",
+        "status": "planned",
+        "dependencies": [
+          "2.1"
+        ],
+        "deliverables": [],
+        "acceptance_criteria": [
+          "Run multiple experiments simultaneously",
+          "Resource management and queuing",
+          "Result aggregation"
+        ],
+        "estimated_hours": 6
+      }
+    ]
+  },
+  "phase_3_intelligence": {
+    "name": "Intelligence - Advanced Analysis",
+    "status": "planned",
+    "estimated_hours": 25,
+    "tasks": [
+      {
+        "id": "3.1",
+        "name": "Pattern Mining System",
+        "status": "planned",
+        "dependencies": [
+          "1.8"
+        ],
+        "deliverables": [],
+        "acceptance_criteria": [
+          "Error clustering and classification",
+          "Systematic issue detection",
+          "Anomaly identification"
+        ],
+        "estimated_hours": 15
+      },
+      {
+        "id": "3.2",
+        "name": "LLM-Assisted Analysis",
+        "status": "planned",
+        "dependencies": [
+          "3.1"
+        ],
+        "deliverables": [],
+        "acceptance_criteria": [
+          "On-demand deep analysis of patterns",
+          "Automated insight generation",
+          "Guideline suggestions"
+        ],
+        "estimated_hours": 10
+      }
+    ]
+  }
+}

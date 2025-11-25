@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+experiments/active/*
+experiments/completed/*
+!experiments/*/example.json
+analysis_cache/
+*.log
+.tmp/
+
+# Data files (contain results)
+sessions_export.csv
+analysis_results/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Keep directory structure
+!.gitkeep
+!README.md

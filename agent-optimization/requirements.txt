@@ -1,0 +1,20 @@
+# Agent Optimization Project Dependencies
+# Python 3.11+ required
+
+# Core dependencies
+pydantic>=2.0.0        # Config validation and schemas
+python-dotenv>=1.0.0   # Environment variables
+
+# Statistical analysis
+numpy>=1.24.0          # Mathematical operations for SPRT
+scipy>=1.11.0          # Statistical functions (percentiles, distributions)
+
+# Testing
+pytest>=7.4.0          # Test framework
+pytest-cov>=4.1.0      # Coverage reporting
+
+# Optional but recommended
+rich>=13.0.0           # Progress display and formatting
+
+# Note: We implement SPRT ourselves for full control
+# Note: Black and mypy excluded - Sonnet handles formatting and typing
