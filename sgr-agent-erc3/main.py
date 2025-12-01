@@ -9,7 +9,7 @@ MODEL_ID = "gpt-4o"
 
 # Start session with metadata
 res = core.start_session(
-    benchmark="erc3-test",
+    benchmark="erc3-dev",
     workspace="my",
     name=f"NextStep SGR Agent ({MODEL_ID}) from ERC3 Samples",
     architecture="NextStep SGR Agent with OpenAI")
