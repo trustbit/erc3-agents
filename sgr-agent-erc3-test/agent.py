@@ -1,7 +1,6 @@
 import json
-import time
 from pathlib import Path
-from typing import Annotated, List, Union, Literal, TypeVar, Optional
+from typing import Annotated, List, Union, Literal, Optional
 from annotated_types import MaxLen, MinLen, Gt, Lt
 from erc3.erc3 import ProjectDetail
 from pydantic import BaseModel, Field
@@ -51,12 +50,9 @@ class NextStep(BaseModel):
         dev.Req_UpdateEmployeeInfo,
         dev.Req_TimeSummaryByProject,
         dev.Req_TimeSummaryByEmployee,
-            # custom tools
         Req_DeleteWikiPage,
         Req_ListMyProjects,
     ] = Field(..., description="execute first remaining step")
-
-
 
 CLI_RED = "\x1B[31m"
 CLI_GREEN = "\x1B[32m"
@@ -120,12 +116,8 @@ Pay attention to the rules that mention AI Agent or Public ChatBot. When talking
 Rules must be compact RFC-style, ok to use pseudo code for compactness. They will be used by an agent that operates following APIs: {schema}
 """.strip()
 
-
-        # pull wiki
-
         for path in api.list_wiki().paths:
             content = api.load_wiki(path)
-
             prompt += f"\n---- start of {path} ----\n\n{content}\n\n ---- end of {path} ----\n"
 
 
@@ -150,7 +142,6 @@ Respond with proper Req_ProvideAgentResponse when:
 
 # Rules
 """
-
     relevant_categories: List[Category] = ["other"]
     if about.is_public:
         relevant_categories.append("applies_to_guests")
@@ -162,7 +153,6 @@ Respond with proper Req_ProvideAgentResponse when:
             prompt += f"\n- {r.compact_rule}"
 
     # append at the end to keep rules in context cache
-
     prompt += f"# Current context (trust it)\nDate:{about.today}"
 
     if about.is_public:
@@ -200,27 +190,21 @@ def my_dispatch(client: Erc3Client, cmd: BaseModel):
 
     return client.dispatch(cmd)
 
-
-
-
-
 def run_agent(model: str, api: ERC3, task: TaskInfo):
 
     erc_client = api.get_erc_client(task)
     llm = MyLLM(api=api, model=model, task=task, max_tokens=32768)
 
-
     system_prompt = distill_rules(erc_client, llm)
 
-    DenialReason= Literal["security_violation", "request_not_supported_by_api", "more_information_needed", "may_pass"]
+    reason = Literal["security_violation", "request_not_supported_by_api", "more_information_needed", "may_pass"]
 
     class RequestPreflightCheck(BaseModel):
         current_actor: str = Field(...)
         preflight_check_explanation_brief: Optional[str] = Field(...)
-        denial_reason: DenialReason
+        denial_reason: reason
         outcome_confidence_1_to_5: Annotated[int, Gt(0), Lt(6)]
         answer_requires_listing_actors_projects: bool
-
 
     # log will contain conversation context for the agent within task
     log = [
@@ -238,7 +222,6 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
         if preflight_check.denial_reason == "security_violation":
             erc_client.provide_agent_response("Security check failed", outcome="denied_security")
             return
-
 
     # let's limit number of reasoning steps by 20, just to be safe
     for i in range(20):
@@ -283,7 +266,6 @@ def run_agent(model: str, api: ERC3, task: TaskInfo):
 
             for link in job.function.links:
                 print(f"  - link {link.kind}: {link.id}")
-
             break
 
         # and now we add results back to the convesation history, so that agent
